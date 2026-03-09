@@ -1,0 +1,142 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String         @id @default(uuid()) @map("user_id")
+  email        String         @unique
+  passwordHash String         @map("password_hash")
+  fullName     String         @map("full_name")
+  currency     String         @default("COP")
+  timezone     String         @default("America/Bogota")
+  planType     String         @default("free") @map("plan_type")
+  mfaEnabled   Boolean        @default(false) @map("mfa_enabled")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  deletedAt    DateTime?      @map("deleted_at")
+  accounts     Account[]
+  creditCards  CreditCard[]
+  categories   Category[]
+  transactions Transaction[]
+  budgets      Budget[]
+  goals        Goal[]
+
+  @@map("users")
+}
+
+model Account {
+  id             String         @id @default(uuid()) @map("account_id")
+  userId         String         @map("user_id")
+  accountName    String         @map("account_name")
+  accountNumber  String?        @map("account_number")
+  accountType    String         @map("account_type")
+  bankName       String?        @map("bank_name")
+  initialBalance Float          @map("initial_balance")
+  currentBalance Float          @map("current_balance")
+  currency       String
+  color          String?
+  isActive       Boolean        @default(true) @map("is_active")
+  user           User           @relation(fields: [userId], references: [id])
+  transactions   Transaction[]
+
+  @@map("accounts")
+}
+
+model CreditCard {
+  id                  String         @id @default(uuid()) @map("card_id")
+  userId              String         @map("user_id")
+  bankName            String         @map("bank_name")
+  cardName            String         @map("card_name")
+  lastFourDigits      String?        @map("last_four_digits")
+  cardNetwork         String         @map("card_network")
+  creditLimit         Float          @map("credit_limit")
+  currentBalance      Float          @default(0) @map("current_balance")
+  cutDay              Int            @map("cut_day")
+  paymentDueDay       Int            @map("payment_due_day")
+  interestRateMonthly Float?         @map("interest_rate_monthly")
+  minimumPaymentPct   Float?         @map("minimum_payment_pct")
+  color               String?
+  user                User           @relation(fields: [userId], references: [id])
+  transactions        Transaction[]
+
+  @@map("credit_cards")
+}
+
+model Category {
+  id           String         @id @default(uuid()) @map("category_id")
+  userId       String?        @map("user_id")
+  name         String
+  type         String         
+  icon         String?
+  color        String?
+  parentId     String?        @map("parent_id")
+  isSystem     Boolean        @default(false) @map("is_system")
+  user         User?          @relation(fields: [userId], references: [id])
+  parent       Category?      @relation("Subcategories", fields: [parentId], references: [id])
+  children     Category[]     @relation("Subcategories")
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@map("categories")
+}
+
+model Transaction {
+  id                 String      @id @default(uuid()) @map("transaction_id")
+  userId             String      @map("user_id")
+  type               String      
+  amount             Float       
+  currency           String
+  categoryId         String?      @map("category_id")
+  accountId          String?     @map("account_id") 
+  cardId             String?     @map("card_id")
+  description        String?     
+  transactionDate    DateTime    @map("transaction_date")
+  installmentsTotal  Int         @default(1) @map("installments_total")
+  installmentCurrent Int         @default(1) @map("installment_current")
+  receiptUrl         String?     @map("receipt_url")
+  isRecurring        Boolean     @default(false) @map("is_recurring")
+  createdAt          DateTime    @default(now()) @map("created_at")
+
+  user               User        @relation(fields: [userId], references: [id])
+  category           Category?    @relation(fields: [categoryId], references: [id])
+  account            Account?    @relation(fields: [accountId], references: [id])
+  creditCard         CreditCard? @relation(fields: [cardId], references: [id])
+
+  @@map("transactions")
+}
+
+model Budget {
+  id           String    @id @default(uuid()) @map("budget_id")
+  userId       String    @map("user_id")
+  categoryId   String?    @map("category_id")
+  period       String    
+  amountLimit  Float     @map("amount_limit")
+  spentAmount  Float     @default(0) @map("spent_amount")
+  alertSent    Int       @default(0) @map("alert_sent") 
+  user         User      @relation(fields: [userId], references: [id])
+  category     Category?  @relation(fields: [categoryId], references: [id])
+
+  @@map("budgets")
+}
+
+model Goal {
+  id               String    @id @default(uuid()) @map("goal_id")
+  userId           String    @map("user_id")
+  name             String
+  targetAmount     Float     @map("target_amount")
+  currentAmount    Float     @default(0) @map("current_amount")
+  deadline         DateTime? 
+  accountId        String?   @map("account_id") 
+  autoContribution Float?    @map("auto_contribution")
+  color            String?
+  icon             String?
+  status           String    @default("active") 
+
+  user             User      @relation(fields: [userId], references: [id])
+
+  @@map("goals")
+}

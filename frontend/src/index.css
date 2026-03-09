@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #f8fafc;
+  --color-primary: #0f172a;
+  --color-primary-dark: #020617;
+  --color-success: #10b981;
+  --color-danger: #ef4444;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: #334155;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer utilities {
+  .bg-background { background-color: var(--color-background); }
+  .bg-primary { background-color: var(--color-primary); }
+  .bg-primary\/10 { background-color: color-mix(in srgb, var(--color-primary) 10%, transparent); }
+  .hover\:bg-primary-dark:hover { background-color: var(--color-primary-dark); }
+  .hover\:bg-primary:hover { background-color: var(--color-primary); }
+  .from-primary { --tw-gradient-from: var(--color-primary); }
+  .to-primary-dark { --tw-gradient-to: var(--color-primary-dark); }
+  .border-primary { border-color: var(--color-primary); }
+  .text-primary { color: var(--color-primary); }
+  .text-primary-dark { color: var(--color-primary-dark); }
+  .text-success { color: var(--color-success); }
+  .text-danger { color: var(--color-danger); }
+  .bg-danger { background-color: var(--color-danger); }
+  .ring-primary { --tw-ring-color: var(--color-primary); }
+  .focus\:ring-primary:focus { --tw-ring-color: var(--color-primary); }
+  .focus\:border-primary:focus { border-color: var(--color-primary); }
+}

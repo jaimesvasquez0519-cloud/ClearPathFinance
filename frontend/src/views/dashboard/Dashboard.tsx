@@ -1,0 +1,319 @@
+import { useQuery } from '@tanstack/react-query';
+import api from '../../utils/api';
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  PieChart, Pie, Cell,
+} from 'recharts';
+import { TrendingUp, TrendingDown, Wallet, Layers, AlertCircle, CreditCard as CardIcon } from 'lucide-react';
+
+const PIE_COLORS = [
+  '#f43f5e', // rose
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+];
+
+const formatCOP = (v: number) => {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+  return String(Math.round(v));
+};
+
+const formatCOPFull = (v: number) => {
+  try {
+    return new Intl.NumberFormat('es-CO', { maximumFractionDigits: 0 }).format(v);
+  } catch {
+    return String(Math.round(v));
+  }
+};
+
+
+const KpiCard = ({
+  title, value, sub, icon: Icon, accent = false,
+}: { title: string; value: string; sub?: string; icon: any; accent?: boolean }) => (
+  <div
+    className={`p-6 rounded-2xl shadow-sm border flex flex-col justify-between hover:shadow-md transition-shadow ${
+      accent
+        ? 'bg-slate-900 border-slate-800 text-white'
+        : 'bg-white/80 backdrop-blur-md border-slate-200/60 text-slate-900'
+    }`}
+  >
+    <div className={`flex justify-between items-center mb-3 ${accent ? '' : ''}`}>
+      <p className={`text-xs font-semibold uppercase tracking-wider ${accent ? 'text-slate-400' : 'text-slate-500'}`}>
+        {title}
+      </p>
+      <Icon size={18} className={accent ? 'text-slate-500' : 'text-slate-400'} />
+    </div>
+    <p className={`text-2xl font-extrabold tracking-tight ${accent ? 'text-white' : 'text-slate-900'}`}>
+      {value}
+    </p>
+    {sub && (
+      <p className={`text-xs mt-1 font-medium ${accent ? 'text-slate-500' : 'text-slate-400'}`}>{sub}</p>
+    )}
+  </div>
+);
+
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs">
+      <p className="font-bold text-slate-700 mb-1">{label}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} style={{ color: p.color }} className="font-medium">
+          {p.name}: ${formatCOPFull(p.value)}
+        </p>
+      ))}
+    </div>
+  );
+};
+
+const Dashboard = () => {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['dashboardSummary'],
+    queryFn: async () => (await api.get('/dashboard')).data,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-48">
+        <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-red-500 text-sm p-4">Error al cargar los datos del panel</div>;
+  }
+
+  const netPositive = (data?.netSavings ?? 0) >= 0;
+
+  // Credit Card Alerts Logic
+  const getCardAlerts = () => {
+    if (!data?.creditCards) return [];
+    const today = new Date();
+    const currentDay = today.getDate();
+    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+    return data.creditCards.map((card: any) => {
+      let daysUntilDue = card.paymentDueDay - currentDay;
+      if (daysUntilDue < 0) {
+        // Due date has passed for this month, calculate for next month
+        daysUntilDue = (daysInMonth - currentDay) + card.paymentDueDay;
+      }
+
+      let status = 'normal';
+      let message = `Vence en ${daysUntilDue} días`;
+
+      if (daysUntilDue === 0) {
+        status = 'danger';
+        message = '¡Vence hoy!';
+      } else if (daysUntilDue <= 3) {
+        status = 'warning';
+        message = `Vence muy pronto (${daysUntilDue} días)`;
+      } else if (daysUntilDue <= 7) {
+        status = 'info';
+        message = `Vence la próxima semana (${daysUntilDue} días)`;
+      }
+
+      return { ...card, daysUntilDue, status, message };
+    }).filter((c: any) => c.status !== 'normal').sort((a: any, b: any) => a.daysUntilDue - b.daysUntilDue);
+  };
+
+  const cardAlerts = getCardAlerts();
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-slate-800">Resumen financiero</h2>
+        <p className="text-xs text-slate-400 font-medium">
+          {new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {/* KPI Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KpiCard
+          title="Balance Total"
+          value={`$${formatCOPFull(data?.totalBalance ?? 0)}`}
+          sub="COP"
+          icon={Wallet}
+        />
+        <KpiCard
+          title="Ingresos del mes"
+          value={`$${formatCOPFull(data?.currentMonthIncome ?? 0)}`}
+          icon={TrendingUp}
+        />
+        <KpiCard
+          title="Gastos del mes"
+          value={`$${formatCOPFull(data?.currentMonthExpense ?? 0)}`}
+          icon={TrendingDown}
+        />
+        <KpiCard
+          title={netPositive ? 'Ahorro neto' : 'Déficit'}
+          value={`${netPositive ? '+' : '-'}$${formatCOPFull(Math.abs(data?.netSavings ?? 0))}`}
+          sub={`FinScore: ${data?.finScore ?? '–'}/100`}
+          icon={Layers}
+          accent
+        />
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Bar chart — last 6 months */}
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <h3 className="text-base font-bold text-slate-800 mb-5">Ingresos vs Gastos — Últimos 6 meses</h3>
+          {data?.monthlyChart?.some((m: any) => m.ingresos > 0 || m.gastos > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={data.monthlyChart} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={formatCOP} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(v) => <span className="text-xs text-slate-600 font-medium capitalize">{v}</span>}
+                />
+                <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="gastos" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">
+              Sin datos históricos aún
+            </div>
+          )}
+        </div>
+
+        {/* Pie chart */}
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <h3 className="text-base font-bold text-slate-800 mb-5">Gastos por categoría</h3>
+          {data?.expensesDistribution?.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={data.expensesDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {data.expensesDistribution.map((_: any, i: number) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(v: any) => [`$${formatCOPFull(v)}`, 'Gasto']}
+                    contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-2 mt-2">
+                {data.expensesDistribution.slice(0, 5).map((cat: any, i: number) => (
+                  <div key={cat.name} className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                    <span className="text-xs text-slate-600 truncate flex-1">{cat.name}</span>
+                    <span className="text-xs font-semibold text-slate-700">${formatCOPFull(cat.value)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">
+              Sin gastos este mes
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Recent transactions & Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <h3 className="text-base font-bold text-slate-800 mb-4">Últimas transacciones</h3>
+          {data?.recentTransactions?.length > 0 ? (
+            <div className="divide-y divide-slate-100/80">
+              {data.recentTransactions.map((t: any) => (
+                <div key={t.id} className="flex justify-between items-center py-3 hover:bg-slate-50/50 px-2 -mx-2 rounded-xl transition-colors">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-slate-700 text-sm">{t.description || t.category?.name || '—'}</span>
+                    <span className="text-xs text-slate-400 mt-0.5">
+                      {new Date(t.transactionDate).toLocaleDateString('es-CO')}
+                      {t.category?.name && ` · ${t.category.name}`}
+                    </span>
+                  </div>
+                  <span className={`font-bold text-sm ${t.type === 'income' ? 'text-slate-900' : 'text-slate-400'}`}>
+                    {t.type === 'income' ? '+' : '-'}${formatCOPFull(Number(t.amount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-slate-400 text-sm italic py-8">Sin actividad reciente</p>
+          )}
+        </div>
+
+        {/* Credit Card Alerts */}
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <CardIcon size={18} className="text-slate-500" />
+            Vencimientos Próximos
+          </h3>
+          {cardAlerts.length > 0 ? (
+            <div className="space-y-3">
+              {cardAlerts.map((alert: any) => (
+                <div 
+                  key={alert.id} 
+                  className={`p-4 rounded-xl flex items-start gap-3 border ${
+                    alert.status === 'danger' ? 'bg-red-50 border-red-100 text-red-900' :
+                    alert.status === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-900' :
+                    'bg-blue-50 border-blue-100 text-blue-900'
+                  }`}
+                >
+                  <AlertCircle size={20} className={`shrink-0 mt-0.5 ${
+                    alert.status === 'danger' ? 'text-red-500' :
+                    alert.status === 'warning' ? 'text-amber-500' :
+                    'text-blue-500'
+                  }`} />
+                  <div>
+                    <h4 className="font-bold text-sm flex items-center gap-2">
+                       {(alert.cardName || alert.bankName).replace(new RegExp(alert.cardNetwork || '', 'ig'), '').trim()}
+                       {alert.cardNetwork === 'visa' && <span className="text-[10px] font-black italic tracking-widest text-[#1434CB] bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-200">VISA</span>}
+                       {alert.cardNetwork === 'mastercard' && (
+                         <span className="flex items-center -space-x-1.5 bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-200">
+                           <span className="w-2.5 h-2.5 rounded-full bg-[#EB001B] mix-blend-multiply"></span>
+                           <span className="w-2.5 h-2.5 rounded-full bg-[#F79E1B] mix-blend-multiply"></span>
+                         </span>
+                       )}
+                       {alert.cardNetwork === 'amex' && <span className="text-[9px] leading-none font-bold bg-[#002663] text-white px-1.5 py-1 rounded shadow-sm border border-[#002663] tracking-wider">AMEX</span>}
+                    </h4>
+                    <p className={`text-xs mt-0.5 font-medium ${
+                      alert.status === 'danger' ? 'text-red-700' :
+                      alert.status === 'warning' ? 'text-amber-700' :
+                      'text-blue-700'
+                    }`}>
+                      {alert.message}
+                    </p>
+                    <p className="text-sm font-bold mt-1 tracking-tight">Deuda: ${formatCOPFull(Number(alert.currentBalance || 0))}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 py-8">
+               <CardIcon size={40} className="mb-3" />
+               <p className="text-sm font-medium">No hay fechas de pago cercanas</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
