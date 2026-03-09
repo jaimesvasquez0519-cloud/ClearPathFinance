@@ -17,8 +17,17 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date() });
 });
 
+import { prisma } from './db';
+import { seedCategories } from '../prisma/seed';
+
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  try {
+    const count = await seedCategories(prisma);
+    console.log(`🌱 Categories auto-seeded: ${count} ready.`);
+  } catch (err) {
+    console.error('❌ Error during auto-seed:', err);
+  }
 });
