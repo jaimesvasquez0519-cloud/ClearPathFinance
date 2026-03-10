@@ -122,7 +122,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
         emergencyFundTotal += amount;
       }
 
-      if (catName.toLowerCase() === 'ahorro' && t.type === 'income') {
+      if (catName.toLowerCase() === 'ahorro' && t.type === 'expense') {
         savingsTotal += amount;
       }
 

@@ -53,8 +53,8 @@ const categories = [
   { name: 'Reembolsos', type: 'income', icon: '🔄', color: '#10b981', isSystem: true },
   { name: 'Regalos / Donaciones', type: 'income', icon: '💝', color: '#a7f3d0', isSystem: true },
   { name: 'Venta de artículos usados', type: 'income', icon: '🏷️', color: '#d1fae5', isSystem: true },
-  { name: 'Ahorro', type: 'income', icon: '🏦', color: '#0ea5e9', isSystem: true },
   { name: 'Otros ingresos', type: 'income', icon: '💵', color: '#6b7280', isSystem: true },
+  { name: 'Ahorro', type: 'expense', icon: '🏦', color: '#0ea5e9', isSystem: true },
 ];
 
 export async function seedCategories(prismaInstance: any) {
