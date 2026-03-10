@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from './middleware/auth';
-import { register, login, getMe } from './controllers/auth';
+import { register, login, getMe, forgotPassword, resetPassword, updateSettings } from './controllers/auth';
 import { getAccounts, createAccount, updateAccount, deleteAccount } from './controllers/accounts';
 import { getCards, createCard, updateCard, deleteCard } from './controllers/cards';
 import { getTransactions, createTransaction, deleteTransaction, payCreditCard } from './controllers/transactions';
@@ -17,6 +17,9 @@ const router = Router();
 router.post('/auth/register', register);
 router.post('/auth/login', login);
 router.get('/auth/me', authenticate, getMe);
+router.post('/auth/forgot-password', forgotPassword);
+router.post('/auth/reset-password', resetPassword);
+router.put('/auth/settings', authenticate, updateSettings);
 
 // Accounts
 router.get('/accounts', authenticate, getAccounts);
@@ -46,6 +49,13 @@ router.get('/budgets', authenticate, getBudgets);
 router.post('/budgets', authenticate, createBudget);
 router.put('/budgets/:id', authenticate, updateBudget);
 router.delete('/budgets/:id', authenticate, deleteBudget);
+
+// Goals (Pockets and Emergency Fund)
+import { getGoals, createGoal, updateGoal, deleteGoal } from './controllers/goals';
+router.get('/goals', authenticate, getGoals);
+router.post('/goals', authenticate, createGoal);
+router.put('/goals/:id', authenticate, updateGoal);
+router.delete('/goals/:id', authenticate, deleteGoal);
 
 // Dashboard
 router.get('/dashboard', authenticate, getDashboardSummary);

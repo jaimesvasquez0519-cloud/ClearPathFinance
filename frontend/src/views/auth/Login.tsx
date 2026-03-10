@@ -77,7 +77,7 @@ const Login = () => {
             <div>
               <div className="flex justify-between items-center block text-sm font-medium text-slate-700">
                 <label>Contraseña</label>
-                <button type="button" onClick={() => alert('Función de recuperación en construcción.')} className="text-primary hover:text-primary-dark text-xs font-medium">¿Olvidaste tu contraseña?</button>
+                <Link to="/forgot-password" className="text-primary hover:text-primary-dark text-xs font-medium">¿Olvidaste tu contraseña?</Link>
               </div>
               <div className="mt-1 relative">
                 <input

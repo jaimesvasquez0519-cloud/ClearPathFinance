@@ -5,9 +5,13 @@ export const getDashboardSummary = async (req: any, res: Response) => {
   try {
     const userId = req.user.id;
 
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const globalSavingsGoal = user?.globalSavingsGoal || 0;
+
     const accounts = await prisma.account.findMany({
       where: { userId, isActive: true },
     });
+    // totalBalance explicitly only counts Accounts (liquid cash/bank), satisfying "excluded from main liquidity"
     const totalBalance = accounts.reduce((sum: number, acc: any) => sum + Number(acc.currentBalance), 0);
 
     // Current month
@@ -103,37 +107,42 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true }
     });
 
-    // === ALL-TIME CATEGORY EXPENSES & EMERGENCY FUND ===
+    // === ALL-TIME CATEGORY EXPENSES ===
     const allTransactions = await prisma.transaction.findMany({
-      where: { userId },
+      where: { userId, type: 'expense' },
       include: { category: true }
     });
 
-    let emergencyFundTotal = 0;
-    let savingsTotal = 0;
     const allTimeCategoryExpenses: Record<string, number> = {};
 
     allTransactions.forEach((t: any) => {
       const amount = Number(t.amount);
       const catName = t.category?.name || 'Sin categoría';
       
-      // We assume money moved to "Fondo de emergencia" either as expense or transfer counts towards the total saved in it
-      if (catName.toLowerCase().includes('emergencia')) {
-        emergencyFundTotal += amount;
-      }
-
-      if (catName.toLowerCase() === 'ahorro' && t.type === 'expense') {
-        savingsTotal += amount;
-      }
-
-      if (t.type === 'expense') {
-        allTimeCategoryExpenses[catName] = (allTimeCategoryExpenses[catName] || 0) + amount;
-      }
+      allTimeCategoryExpenses[catName] = (allTimeCategoryExpenses[catName] || 0) + amount;
     });
 
     const allTimeExpensesList = Object.keys(allTimeCategoryExpenses)
       .map(name => ({ name, value: allTimeCategoryExpenses[name] }))
       .sort((a,b) => b.value - a.value);
+
+    // === SAVINGS & EMERGENCY POCKETS (PHASE 6 & 7) ===
+    const goals = await prisma.goal.findMany({
+      where: { userId }
+    });
+    
+    let emergencyFundTotal = 0;
+    let emergencyFundTarget = 0;
+    let savingsTotal = 0;
+    
+    goals.forEach((g: any) => {
+      if (g.type === 'emergency') {
+        emergencyFundTotal += Number(g.currentAmount);
+        emergencyFundTarget += Number(g.targetAmount);
+      } else {
+        savingsTotal += Number(g.currentAmount);
+      }
+    });
 
     // === KPI: BURN RATE & RUNWAY ===
     const totalHistoricalExpenses = historical
@@ -227,7 +236,9 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       monthlyChart,
       creditCards,
       emergencyFundTotal,
+      emergencyFundTarget,
       savingsTotal,
+      globalSavingsGoal,
       allTimeExpensesList,
       recentTransactions: monthlyTransactions
         .sort((a: any, b: any) => new Date(b.createdAt || b.transactionDate).getTime() - new Date(a.createdAt || a.transactionDate).getTime())

@@ -27,6 +27,7 @@ const AppLayout = () => {
     { name: 'Resumen', path: '/', icon: LayoutDashboard },
     { name: 'Cuentas', path: '/accounts', icon: Wallet },
     { name: 'Tarjetas', path: '/cards', icon: CreditCard },
+    { name: 'Ahorros', path: '/savings', icon: Target },
     { name: 'Transacciones', path: '/transactions', icon: List },
     { name: 'Presupuestos', path: '/budgets', icon: Target },
   ];

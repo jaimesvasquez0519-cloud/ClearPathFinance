@@ -70,13 +70,14 @@ export const createTransaction = async (req: any, res: Response) => {
           categoryId: finalCategoryId || null,
           accountId: accountId || null,
           cardId: cardId || null,
+          goalId: req.body.goalId || null,
           description,
           transactionDate: new Date(transactionDate),
         },
         include: { category: true, account: true, creditCard: true }
       });
 
-      // 2. Update Account or Card Balance
+      // 2. Update Account, Card or Goal Balance
       if (accountId) {
         if (type === 'income') {
           await tx.account.update({
@@ -101,6 +102,19 @@ export const createTransaction = async (req: any, res: Response) => {
           await tx.creditCard.update({
             where: { id: cardId },
             data: { currentBalance: { decrement: amount } }
+          });
+        }
+      } else if (req.body.goalId) {
+        // Expense/Income routing from/to a pocket
+        if (type === 'expense') {
+          await tx.goal.update({
+            where: { id: req.body.goalId },
+            data: { currentAmount: { decrement: amount } }
+          });
+        } else if (type === 'income') {
+          await tx.goal.update({
+            where: { id: req.body.goalId },
+            data: { currentAmount: { increment: amount } }
           });
         }
       }
@@ -174,6 +188,18 @@ export const deleteTransaction = async (req: any, res: Response) => {
           await tx.creditCard.update({
             where: { id: transaction.cardId },
             data: { currentBalance: { increment: transaction.amount } }
+          });
+        }
+      } else if (transaction.goalId) {
+        if (transaction.type === 'expense') {
+          await tx.goal.update({
+            where: { id: transaction.goalId },
+            data: { currentAmount: { increment: transaction.amount } }
+          });
+        } else if (transaction.type === 'income') {
+          await tx.goal.update({
+            where: { id: transaction.goalId },
+            data: { currentAmount: { decrement: transaction.amount } }
           });
         }
       }

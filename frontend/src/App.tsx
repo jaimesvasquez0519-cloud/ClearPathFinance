@@ -39,9 +39,12 @@ class ErrorBoundary extends React.Component<
 // Lazy load views
 const Login = React.lazy(() => import('./views/auth/Login'));
 const Register = React.lazy(() => import('./views/auth/Register'));
+const ForgotPassword = React.lazy(() => import('./views/auth/ForgotPassword'));
+const ResetPassword = React.lazy(() => import('./views/auth/ResetPassword'));
 const Dashboard = React.lazy(() => import('./views/dashboard/Dashboard'));
 const Accounts = React.lazy(() => import('./views/accounts/Accounts'));
 const Cards = React.lazy(() => import('./views/cards/Cards'));
+const Savings = React.lazy(() => import('./views/savings/Savings'));
 const Transactions = React.lazy(() => import('./views/transactions/Transactions'));
 const Presupuestos = React.lazy(() => import('./views/budgets/Presupuestos'));
 const UserApprovals = React.lazy(() => import('./views/admin/UserApprovals'));
@@ -66,6 +69,8 @@ function App() {
             {/* Public Routes */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             
             {/* Protected Routes */}
             <Route path="/" element={
@@ -76,6 +81,7 @@ function App() {
               <Route index element={<ErrorBoundary><Dashboard /></ErrorBoundary>} />
               <Route path="accounts" element={<ErrorBoundary><Accounts /></ErrorBoundary>} />
               <Route path="cards" element={<ErrorBoundary><Cards /></ErrorBoundary>} />
+              <Route path="savings" element={<ErrorBoundary><Savings /></ErrorBoundary>} />
               <Route path="transactions" element={<ErrorBoundary><Transactions /></ErrorBoundary>} />
               <Route path="budgets" element={<ErrorBoundary><Presupuestos /></ErrorBoundary>} />
               <Route path="admin/users" element={<ErrorBoundary><UserApprovals /></ErrorBoundary>} />

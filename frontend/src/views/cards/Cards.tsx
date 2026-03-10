@@ -6,6 +6,7 @@ import { CreditCard, Edit2, Trash2, ArrowUpRight } from 'lucide-react';
 import NuevaTarjetaModal from '../../components/modals/NuevaTarjetaModal';
 import EditarTarjetaModal from '../../components/modals/EditarTarjetaModal';
 import PagarTarjetaModal from '../../components/modals/PagarTarjetaModal';
+import CreditDashboard from './CreditDashboard';
 
 const Cards = () => {
   const queryClient = useQueryClient();
@@ -145,6 +146,9 @@ const Cards = () => {
           </div>
         )}
       </div>
+
+      {/* Credit Dashboard — Health & Installments */}
+      {cards && cards.length > 0 && <CreditDashboard cards={cards} />}
     </div>
   );
 };

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -17,10 +17,13 @@ model User {
   currency     String         @default("COP")
   timezone     String         @default("America/Bogota")
   planType     String         @default("free") @map("plan_type")
-  mfaEnabled   Boolean        @default(false) @map("mfa_enabled")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  deletedAt    DateTime?      @map("deleted_at")
-  accounts     Account[]
+  mfaEnabled       Boolean        @default(false) @map("mfa_enabled")
+  resetToken       String?        @map("reset_token")
+  resetTokenExpiry DateTime?      @map("reset_token_expiry")
+  globalSavingsGoal Float?        @map("global_savings_goal")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  deletedAt        DateTime?      @map("deleted_at")
+  accounts         Account[]
   creditCards  CreditCard[]
   categories   Category[]
   transactions Transaction[]
@@ -99,10 +102,12 @@ model Transaction {
   categoryId         String?      @map("category_id")
   accountId          String?     @map("account_id") 
   cardId             String?     @map("card_id")
+  goalId             String?     @map("goal_id")
   description        String?     
   transactionDate    DateTime    @map("transaction_date")
   installmentsTotal  Int         @default(1) @map("installments_total")
   installmentCurrent Int         @default(1) @map("installment_current")
+  installmentInterestRate Float? @map("installment_interest_rate")
   receiptUrl         String?     @map("receipt_url")
   isRecurring        Boolean     @default(false) @map("is_recurring")
   createdAt          DateTime    @default(now()) @map("created_at")
@@ -111,6 +116,7 @@ model Transaction {
   category           Category?    @relation(fields: [categoryId], references: [id])
   account            Account?    @relation(fields: [accountId], references: [id])
   creditCard         CreditCard? @relation(fields: [cardId], references: [id])
+  goal               Goal?       @relation(fields: [goalId], references: [id])
 
   @@map("transactions")
 }
@@ -124,6 +130,7 @@ model RecurringTransaction {
   categoryId      String?     @map("category_id")
   accountId       String?     @map("account_id") 
   cardId          String?     @map("card_id")
+  goalId          String?     @map("goal_id")
   description     String?     
   frequency       String      @default("monthly") 
   dayOfMonth      Int         @map("day_of_month") 
@@ -136,6 +143,7 @@ model RecurringTransaction {
   category        Category?   @relation(fields: [categoryId], references: [id])
   account         Account?    @relation(fields: [accountId], references: [id])
   creditCard      CreditCard? @relation(fields: [cardId], references: [id])
+  goal            Goal?       @relation(fields: [goalId], references: [id])
 
   @@map("recurring_transactions")
 }
@@ -158,6 +166,7 @@ model Goal {
   id               String    @id @default(uuid()) @map("goal_id")
   userId           String    @map("user_id")
   name             String
+  type             String    @default("pocket") // "pocket", "emergency"
   targetAmount     Float     @map("target_amount")
   currentAmount    Float     @default(0) @map("current_amount")
   deadline         DateTime? 
@@ -168,6 +177,8 @@ model Goal {
   status           String    @default("active") 
 
   user             User      @relation(fields: [userId], references: [id])
+  transactions     Transaction[]
+  recurringTransactions RecurringTransaction[]
 
   @@map("goals")
 }

@@ -171,9 +171,9 @@ const Dashboard = () => {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Bar chart — last 6 months */}
+        {/* Bar chart — last 3 months */}
         <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
-          <h3 className="text-base font-bold text-slate-800 mb-5">Ingresos vs Gastos — Últimos 6 meses</h3>
+          <h3 className="text-base font-bold text-slate-800 mb-5">Ingresos vs Gastos — Últimos 3 meses</h3>
           {data?.monthlyChart?.some((m: any) => m.ingresos > 0 || m.gastos > 0) ? (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={data.monthlyChart} barCategoryGap="30%">
