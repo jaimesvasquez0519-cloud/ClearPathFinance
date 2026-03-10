@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import type { SubmitHandler } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
-import { X } from 'lucide-react';
+import { X, CreditCard as CardIcon, Wallet, Calculator } from 'lucide-react';
 
 const schema = z.object({
   amount: z.number().positive('El monto debe ser mayor a 0'),
@@ -39,6 +39,16 @@ const parseCOP = (val: string): number => {
   return parseFloat(val.replace(/\./g, '').replace(/\s/g, '')) || 0;
 };
 
+const fmtCOP = (n: number) =>
+  new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+
+const calcMonthlyPayment = (principal: number, monthlyRatePct: number, months: number) => {
+  if (months <= 0) return 0;
+  if (monthlyRatePct === 0) return principal / months;
+  const r = monthlyRatePct / 100;
+  return (principal * r * Math.pow(1 + r, months)) / (Math.pow(1 + r, months) - 1);
+};
+
 const accountTypeLabels: Record<string, string> = {
   checking: 'Corriente',
   savings: 'Ahorros',
@@ -51,6 +61,10 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   const [serverError, setServerError] = useState('');
   const [amountDisplay, setAmountDisplay] = useState('');
   const [sourceType, setSourceType] = useState<'account' | 'card'>('account');
+
+  // CC Installment state
+  const [installments, setInstallments] = useState(1);
+  const [interestRate, setInterestRate] = useState(0);
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],
@@ -78,21 +92,30 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
     },
   });
 
-  // Watch the type field to filter categories reactively
   const selectedType = useWatch({ control, name: 'type', defaultValue: 'expense' });
   const isRecurring = watch('isRecurring');
+  const currentAmount = parseCOP(amountDisplay);
 
-  // Filter categories to match the selected transaction type
+  // Show installment pane only when paying with card and it's an expense
+  const showInstallments = sourceType === 'card' && selectedType === 'expense';
+
+  // Live amortization calculation
+  const monthlyPayment = useMemo(
+    () => calcMonthlyPayment(currentAmount, interestRate, installments),
+    [currentAmount, interestRate, installments]
+  );
+  const totalCost = monthlyPayment * installments;
+  const totalInterest = totalCost - currentAmount;
+
   const filteredCategories = categories?.filter((cat: any) => {
     if (selectedType === 'transfer') return cat.type === 'transfer';
     if (selectedType === 'income') return cat.type === 'income';
-    return cat.type === 'expense'; // default
+    return cat.type === 'expense';
   }) ?? [];
 
   const mutation = useMutation({
     mutationFn: (data: FormData) => {
       if (data.isRecurring) {
-        // Send a clean payload specifically for recurring endpoint
         const recurringPayload = {
           type: data.type,
           amount: data.amount,
@@ -105,11 +128,27 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
         };
         return api.post('/recurring', recurringPayload);
       }
-      return api.post('/transactions', data);
+
+      const payload: any = {
+        ...data,
+        categoryId: data.categoryId && data.categoryId !== '' ? data.categoryId : null,
+        accountId: data.accountId && data.accountId !== '' ? data.accountId : null,
+        cardId: data.cardId && data.cardId !== '' ? data.cardId : null,
+      };
+
+      // Add installment data if paying with card
+      if (showInstallments && installments > 1) {
+        payload.installmentsTotal = installments;
+        payload.installmentInterestRate = interestRate;
+        payload.installmentCurrent = 1;
+      }
+
+      return api.post('/transactions', payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       queryClient.invalidateQueries({ queryKey: ['cards'] });
       onClose();
@@ -126,7 +165,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center p-6 border-b border-slate-100">
           <h2 className="text-lg font-bold text-slate-900">Nueva Transacción</h2>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100">
@@ -177,35 +216,24 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
             </div>
           </div>
 
+          {/* Source: Account or Card toggle */}
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-sm font-medium text-slate-700">Origen de los fondos</label>
               <div className="flex bg-slate-100 p-0.5 rounded-lg">
                 <button
                   type="button"
-                  onClick={() => {
-                    setSourceType('account');
-                    // Reset cardId when switching to account
-                    register('cardId').onChange({ target: { value: '' } });
-                  }}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    sourceType === 'account' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  onClick={() => { setSourceType('account'); register('cardId').onChange({ target: { value: '' } }); }}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'account' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                  Cuenta
+                  <Wallet size={12} /> Cuenta
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setSourceType('card');
-                    // Reset accountId when switching to card
-                    register('accountId').onChange({ target: { value: '' } });
-                  }}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    sourceType === 'card' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                  }`}
+                  onClick={() => { setSourceType('card'); register('accountId').onChange({ target: { value: '' } }); }}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'card' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                 >
-                  Tarjeta
+                  <CardIcon size={12} /> Tarjeta
                 </button>
               </div>
             </div>
@@ -237,6 +265,64 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
             )}
             {errors.accountId && <p className="mt-1 text-xs text-red-600">{errors.accountId.message}</p>}
           </div>
+
+          {/* CC Installments Panel — shown only when card + expense */}
+          {showInstallments && (
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2 text-indigo-700 text-sm font-semibold">
+                <Calculator size={15} />
+                Financiación a cuotas
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Número de cuotas</label>
+                  <select
+                    value={installments}
+                    onChange={e => setInstallments(Number(e.target.value))}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm bg-white"
+                  >
+                    {[1,2,3,4,5,6,9,12,18,24,36,48,60].map(n => (
+                      <option key={n} value={n}>{n} {n === 1 ? 'cuota (de contado)' : 'cuotas'}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Tasa mensual (%)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="100"
+                    value={interestRate}
+                    onChange={e => setInterestRate(Number(e.target.value))}
+                    placeholder="Ej: 2.5"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Live amortization preview */}
+              {installments > 1 && currentAmount > 0 && (
+                <div className="bg-white rounded-lg p-3 border border-indigo-100 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div>
+                    <p className="text-slate-400 mb-1">Valor cuota</p>
+                    <p className="font-black text-indigo-700 text-sm">{fmtCOP(monthlyPayment)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-1">Total a pagar</p>
+                    <p className="font-bold text-slate-700">{fmtCOP(totalCost)}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-400 mb-1">Total intereses</p>
+                    <p className="font-bold text-amber-600">{fmtCOP(totalInterest)}</p>
+                  </div>
+                </div>
+              )}
+              {installments === 1 && (
+                <p className="text-xs text-indigo-600 font-medium">💡 Pago de contado — sin intereses</p>
+              )}
+            </div>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -326,7 +412,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
               disabled={isSubmitting || mutation.isPending}
               className="flex-1 py-2 px-4 bg-primary hover:bg-primary-dark text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
             >
-              {mutation.isPending ? 'Guardando...' : 'Guardar'}
+              {mutation.isPending ? 'Guardando...' : (showInstallments && installments > 1 ? `Guardar · ${installments} cuotas` : 'Guardar')}
             </button>
           </div>
         </form>
