@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, Layers, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
 
 const PIE_COLORS = [
   '#f43f5e', // rose
@@ -89,8 +89,6 @@ const Dashboard = () => {
     return <div className="text-red-500 text-sm p-4">Error al cargar los datos del panel</div>;
   }
 
-  const netPositive = (data?.netSavings ?? 0) >= 0;
-
   // Credit Card Alerts Logic
   const getCardAlerts = () => {
     if (!data?.creditCards) return [];
@@ -154,13 +152,6 @@ const Dashboard = () => {
           value={`$${formatCOPFull(data?.currentMonthExpense ?? 0)}`}
           icon={TrendingDown}
           gradient="bg-gradient-to-br from-rose-500 to-red-700"
-        />
-        <KpiCard
-          title={netPositive ? 'Ahorro neto' : 'Déficit'}
-          value={`${netPositive ? '+' : '-'}$${formatCOPFull(Math.abs(data?.netSavings ?? 0))}`}
-          sub={`FinScore: ${data?.finScore ?? '–'}/100`}
-          icon={Layers}
-          gradient={netPositive ? 'bg-gradient-to-br from-sky-500 to-blue-700' : 'bg-gradient-to-br from-orange-500 to-amber-700'}
         />
         <KpiCard
           title="Ahorro Total"
