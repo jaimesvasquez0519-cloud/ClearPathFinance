@@ -33,28 +33,24 @@ const formatCOPFull = (v: number) => {
 
 
 const KpiCard = ({
-  title, value, sub, icon: Icon, accent = false,
-}: { title: string; value: string; sub?: string; icon: any; accent?: boolean }) => (
+  title, value, sub, icon: Icon, gradient,
+}: { title: string; value: string; sub?: string; icon: any; gradient: string }) => (
   <div
-    className={`p-6 rounded-3xl shadow-md border flex flex-col justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${
-      accent
-        ? 'bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 text-white'
-        : 'bg-white/90 backdrop-blur-xl border-slate-200/60 text-slate-900'
-    }`}
+    className={`p-6 rounded-3xl shadow-lg flex flex-col justify-between hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 text-white ${gradient}`}
   >
-    <div className={`flex justify-between items-center mb-4`}>
-      <p className={`text-xs font-bold uppercase tracking-widest ${accent ? 'text-slate-300' : 'text-slate-500'}`}>
+    <div className="flex justify-between items-center mb-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-white/70">
         {title}
       </p>
-      <div className={`p-2 rounded-xl ${accent ? 'bg-white/10 text-white' : 'bg-primary/10 text-primary'}`}>
-         <Icon size={20} className={accent ? 'text-white' : 'text-primary'} />
+      <div className="p-2 rounded-xl bg-white/20 backdrop-blur-sm">
+         <Icon size={20} className="text-white" />
       </div>
     </div>
-    <p className={`text-3xl font-black tracking-tight ${accent ? 'text-white' : 'text-slate-900'}`}>
+    <p className="text-2xl font-black tracking-tight text-white">
       {value}
     </p>
     {sub && (
-      <p className={`text-xs mt-2 font-semibold ${accent ? 'text-slate-400' : 'text-slate-500'}`}>{sub}</p>
+      <p className="text-xs mt-2 font-semibold text-white/60">{sub}</p>
     )}
   </div>
 );
@@ -139,35 +135,46 @@ const Dashboard = () => {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <KpiCard
-          title="Fondo Emergencia"
-          value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
-          sub="Ahorro Histórico"
-          icon={ShieldCheck}
-          accent
-        />
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Balance Total"
           value={`$${formatCOPFull(data?.totalBalance ?? 0)}`}
           sub="COP"
           icon={Wallet}
+          gradient="bg-gradient-to-br from-indigo-600 to-indigo-800"
         />
         <KpiCard
           title="Ingresos del mes"
           value={`$${formatCOPFull(data?.currentMonthIncome ?? 0)}`}
           icon={TrendingUp}
+          gradient="bg-gradient-to-br from-emerald-500 to-teal-700"
         />
         <KpiCard
           title="Gastos del mes"
           value={`$${formatCOPFull(data?.currentMonthExpense ?? 0)}`}
           icon={TrendingDown}
+          gradient="bg-gradient-to-br from-rose-500 to-red-700"
         />
         <KpiCard
           title={netPositive ? 'Ahorro neto' : 'Déficit'}
           value={`${netPositive ? '+' : '-'}$${formatCOPFull(Math.abs(data?.netSavings ?? 0))}`}
           sub={`FinScore: ${data?.finScore ?? '–'}/100`}
           icon={Layers}
+          gradient={netPositive ? 'bg-gradient-to-br from-sky-500 to-blue-700' : 'bg-gradient-to-br from-orange-500 to-amber-700'}
+        />
+        <KpiCard
+          title="Ahorro Total"
+          value={`$${formatCOPFull(data?.savingsTotal ?? 0)}`}
+          sub="Categ. Ahorro"
+          icon={ShieldCheck}
+          gradient="bg-gradient-to-br from-violet-500 to-purple-800"
+        />
+        <KpiCard
+          title="Fondo Emergencia"
+          value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
+          sub="Histórico"
+          icon={ShieldCheck}
+          gradient="bg-gradient-to-br from-slate-700 to-slate-900"
         />
       </div>
 

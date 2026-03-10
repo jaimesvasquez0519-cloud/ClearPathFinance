@@ -110,6 +110,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     });
 
     let emergencyFundTotal = 0;
+    let savingsTotal = 0;
     const allTimeCategoryExpenses: Record<string, number> = {};
 
     allTransactions.forEach((t: any) => {
@@ -119,6 +120,10 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       // We assume money moved to "Fondo de emergencia" either as expense or transfer counts towards the total saved in it
       if (catName.toLowerCase().includes('emergencia')) {
         emergencyFundTotal += amount;
+      }
+
+      if (catName.toLowerCase() === 'ahorro' && t.type === 'income') {
+        savingsTotal += amount;
       }
 
       if (t.type === 'expense') {
@@ -140,6 +145,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       monthlyChart,
       creditCards,
       emergencyFundTotal,
+      savingsTotal,
       allTimeExpensesList,
       recentTransactions: monthlyTransactions
         .sort((a: any, b: any) => new Date(b.createdAt || b.transactionDate).getTime() - new Date(a.createdAt || a.transactionDate).getTime())

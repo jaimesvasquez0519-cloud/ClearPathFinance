@@ -92,7 +92,18 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   const mutation = useMutation({
     mutationFn: (data: FormData) => {
       if (data.isRecurring) {
-        return api.post('/recurring', data);
+        // Send a clean payload specifically for recurring endpoint
+        const recurringPayload = {
+          type: data.type,
+          amount: data.amount,
+          categoryId: data.categoryId && data.categoryId !== '' ? data.categoryId : null,
+          accountId: data.accountId && data.accountId !== '' ? data.accountId : null,
+          cardId: data.cardId && data.cardId !== '' ? data.cardId : null,
+          description: data.description || '',
+          frequency: data.frequency || 'monthly',
+          dayOfMonth: data.dayOfMonth || new Date().getDate(),
+        };
+        return api.post('/recurring', recurringPayload);
       }
       return api.post('/transactions', data);
     },
