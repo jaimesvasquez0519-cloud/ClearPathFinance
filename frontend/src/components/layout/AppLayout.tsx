@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, CreditCard, Wallet, List, LogOut, Target } from 'lucide-react';
+import { LayoutDashboard, CreditCard, Wallet, List, LogOut, Target, Users } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 const AppLayout = () => {
@@ -19,6 +19,10 @@ const AppLayout = () => {
     { name: 'Transacciones', path: '/transactions', icon: List },
     { name: 'Presupuestos', path: '/budgets', icon: Target },
   ];
+
+  if (user?.role === 'admin') {
+    navItems.push({ name: 'Usuarios', path: '/admin/users', icon: Users });
+  }
 
   return (
     <div className="flex h-screen bg-background">
