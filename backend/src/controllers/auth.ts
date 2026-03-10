@@ -37,6 +37,8 @@ export const register = async (req: Request, res: Response) => {
         email: user.email,
         fullName: user.fullName,
         currency: user.currency,
+        role: user.role,
+        status: user.status,
       },
     });
   } catch (error) {
@@ -56,7 +58,15 @@ export const login = async (req: Request, res: Response) => {
 
     const isMatch = await bcrypt.compare(password, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+      return res.status(400).json({ error: 'Credenciales inválidas' });
+    }
+
+    if (user.status === 'pending') {
+      return res.status(403).json({ error: 'Tu cuenta ha sido creada pero aún no ha sido aprobada por un administrador.' });
+    }
+    
+    if (user.status === 'rejected') {
+       return res.status(403).json({ error: 'El acceso a esta cuenta ha sido denegado.' });
     }
 
     const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, {
@@ -70,6 +80,8 @@ export const login = async (req: Request, res: Response) => {
         email: user.email,
         fullName: user.fullName,
         currency: user.currency,
+        role: user.role,
+        status: user.status,
       },
     });
   } catch (error) {
@@ -89,6 +101,8 @@ export const getMe = async (req: any, res: Response) => {
         currency: true,
         timezone: true,
         planType: true,
+        role: true,
+        status: true,
       },
     });
     res.json(user);

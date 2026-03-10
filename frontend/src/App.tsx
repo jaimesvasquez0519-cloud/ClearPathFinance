@@ -44,6 +44,7 @@ const Accounts = React.lazy(() => import('./views/accounts/Accounts'));
 const Cards = React.lazy(() => import('./views/cards/Cards'));
 const Transactions = React.lazy(() => import('./views/transactions/Transactions'));
 const Presupuestos = React.lazy(() => import('./views/budgets/Presupuestos'));
+const UserApprovals = React.lazy(() => import('./views/admin/UserApprovals'));
 const AppLayout = React.lazy(() => import('./components/layout/AppLayout'));
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -77,6 +78,7 @@ function App() {
               <Route path="cards" element={<ErrorBoundary><Cards /></ErrorBoundary>} />
               <Route path="transactions" element={<ErrorBoundary><Transactions /></ErrorBoundary>} />
               <Route path="budgets" element={<ErrorBoundary><Presupuestos /></ErrorBoundary>} />
+              <Route path="admin/users" element={<ErrorBoundary><UserApprovals /></ErrorBoundary>} />
             </Route>
 
             {/* Fallback */}

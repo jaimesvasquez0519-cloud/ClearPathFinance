@@ -12,6 +12,8 @@ model User {
   email        String         @unique
   passwordHash String         @map("password_hash")
   fullName     String         @map("full_name")
+  role         String         @default("user") // "admin" or "user"
+  status       String         @default("pending") // "pending", "active", "rejected"
   currency     String         @default("COP")
   timezone     String         @default("America/Bogota")
   planType     String         @default("free") @map("plan_type")
@@ -22,6 +24,7 @@ model User {
   creditCards  CreditCard[]
   categories   Category[]
   transactions Transaction[]
+  recurringTransactions RecurringTransaction[]
   budgets      Budget[]
   goals        Goal[]
 
@@ -42,6 +45,7 @@ model Account {
   isActive       Boolean        @default(true) @map("is_active")
   user           User           @relation(fields: [userId], references: [id])
   transactions   Transaction[]
+  recurringTransactions RecurringTransaction[]
 
   @@map("accounts")
 }
@@ -62,6 +66,7 @@ model CreditCard {
   color               String?
   user                User           @relation(fields: [userId], references: [id])
   transactions        Transaction[]
+  recurringTransactions RecurringTransaction[]
 
   @@map("credit_cards")
 }
@@ -79,6 +84,7 @@ model Category {
   parent       Category?      @relation("Subcategories", fields: [parentId], references: [id])
   children     Category[]     @relation("Subcategories")
   transactions Transaction[]
+  recurringTransactions RecurringTransaction[]
   budgets      Budget[]
 
   @@map("categories")
@@ -107,6 +113,31 @@ model Transaction {
   creditCard         CreditCard? @relation(fields: [cardId], references: [id])
 
   @@map("transactions")
+}
+
+model RecurringTransaction {
+  id              String      @id @default(uuid()) @map("recurring_id")
+  userId          String      @map("user_id")
+  type            String      
+  amount          Float       
+  currency        String
+  categoryId      String?     @map("category_id")
+  accountId       String?     @map("account_id") 
+  cardId          String?     @map("card_id")
+  description     String?     
+  frequency       String      @default("monthly") 
+  dayOfMonth      Int         @map("day_of_month") 
+  isActive        Boolean     @default(true) @map("is_active")
+  lastProcessed   DateTime?   @map("last_processed") 
+  nextProcessing  DateTime    @map("next_processing") 
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  user            User        @relation(fields: [userId], references: [id])
+  category        Category?   @relation(fields: [categoryId], references: [id])
+  account         Account?    @relation(fields: [accountId], references: [id])
+  creditCard      CreditCard? @relation(fields: [cardId], references: [id])
+
+  @@map("recurring_transactions")
 }
 
 model Budget {

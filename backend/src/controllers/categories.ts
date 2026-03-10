@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../db';
+import { seedCategories as autoSeedCategories } from '../../prisma/seed';
 
 export const getCategories = async (req: any, res: Response) => {
   try {
@@ -39,5 +40,15 @@ export const createCategory = async (req: any, res: Response) => {
     res.status(201).json(category);
   } catch (error) {
     res.status(500).json({ error: 'Server error creating category' });
+  }
+};
+
+export const seedCategories = async (req: any, res: Response) => {
+  try {
+    const count = await autoSeedCategories(prisma);
+    res.status(200).json({ message: `Successfully seeded ${count} categories.` });
+  } catch (error) {
+    console.error('Error seeding categories:', error);
+    res.status(500).json({ error: 'Server error seeding categories' });
   }
 };

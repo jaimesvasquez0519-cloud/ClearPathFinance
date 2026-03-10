@@ -19,11 +19,16 @@ app.get('/health', (req: Request, res: Response) => {
 
 import { prisma } from './db';
 import { seedCategories } from '../prisma/seed';
+import { initRecurringTransactionsCron } from './cron/recurring';
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // Initialize cron jobs
+  initRecurringTransactionsCron();
+  
   try {
     const count = await seedCategories(prisma);
     console.log(`🌱 Categories auto-seeded: ${count} ready.`);

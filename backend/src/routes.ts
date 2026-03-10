@@ -4,9 +4,12 @@ import { register, login, getMe } from './controllers/auth';
 import { getAccounts, createAccount, updateAccount, deleteAccount } from './controllers/accounts';
 import { getCards, createCard, updateCard, deleteCard } from './controllers/cards';
 import { getTransactions, createTransaction, deleteTransaction, payCreditCard } from './controllers/transactions';
-import { getCategories, createCategory } from './controllers/categories';
+import { getCategories, createCategory, seedCategories } from './controllers/categories';
 import { getBudgets, createBudget, updateBudget, deleteBudget } from './controllers/budgets';
 import { getDashboardSummary } from './controllers/dashboard';
+import { getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction } from './controllers/recurring';
+import { getPendingUsers, approveUser, rejectUser } from './controllers/admin';
+import { isAdmin } from './middlewares/isAdmin';
 
 const router = Router();
 
@@ -36,6 +39,7 @@ router.delete('/transactions/:id', authenticate, deleteTransaction);
 // Categories
 router.get('/categories', authenticate, getCategories);
 router.post('/categories', authenticate, createCategory);
+router.post('/categories/seed', authenticate, seedCategories);
 
 // Budgets
 router.get('/budgets', authenticate, getBudgets);
@@ -45,5 +49,16 @@ router.delete('/budgets/:id', authenticate, deleteBudget);
 
 // Dashboard
 router.get('/dashboard', authenticate, getDashboardSummary);
+
+// Recurring
+router.get('/recurring', authenticate, getRecurringTransactions);
+router.post('/recurring', authenticate, createRecurringTransaction);
+router.put('/recurring/:id', authenticate, updateRecurringTransaction);
+router.delete('/recurring/:id', authenticate, deleteRecurringTransaction);
+
+// Admin (require authenticate + isAdmin)
+router.get('/admin/users/pending', authenticate, isAdmin, getPendingUsers);
+router.put('/admin/users/:id/approve', authenticate, isAdmin, approveUser);
+router.delete('/admin/users/:id/reject', authenticate, isAdmin, rejectUser);
 
 export default router;

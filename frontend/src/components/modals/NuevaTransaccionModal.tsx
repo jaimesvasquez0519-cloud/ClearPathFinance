@@ -15,6 +15,9 @@ const schema = z.object({
   cardId: z.string().optional(),
   categoryId: z.string().optional(),
   transactionDate: z.string().min(1, 'La fecha es requerida'),
+  isRecurring: z.boolean().optional(),
+  frequency: z.enum(['monthly', 'weekly', 'yearly']).optional(),
+  dayOfMonth: z.number().min(1).max(31).optional(),
 }).refine((data) => data.accountId || data.cardId, {
   message: 'Selecciona una cuenta o tarjeta',
   path: ['accountId'],
@@ -64,16 +67,20 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
     queryFn: async () => (await api.get('/categories')).data,
   });
 
-  const { register, handleSubmit, control, formState: { errors, isSubmitting } } = useForm<FormData>({
+  const { register, handleSubmit, control, formState: { errors, isSubmitting }, watch } = useForm<FormData>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
       type: 'expense',
       transactionDate: new Date().toISOString().split('T')[0],
+      isRecurring: false,
+      frequency: 'monthly',
+      dayOfMonth: new Date().getDate(),
     },
   });
 
   // Watch the type field to filter categories reactively
   const selectedType = useWatch({ control, name: 'type', defaultValue: 'expense' });
+  const isRecurring = watch('isRecurring');
 
   // Filter categories to match the selected transaction type
   const filteredCategories = categories?.filter((cat: any) => {
@@ -83,7 +90,12 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   }) ?? [];
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => api.post('/transactions', data),
+    mutationFn: (data: FormData) => {
+      if (data.isRecurring) {
+        return api.post('/recurring', data);
+      }
+      return api.post('/transactions', data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
@@ -250,6 +262,45 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
             />
             {errors.transactionDate && <p className="mt-1 text-xs text-red-600">{errors.transactionDate.message}</p>}
           </div>
+
+          {selectedType !== 'transfer' && (
+            <div className="pt-2 border-t border-slate-100">
+              <label className="flex items-center gap-2 cursor-pointer mb-3">
+                <input
+                  type="checkbox"
+                  {...register('isRecurring')}
+                  className="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4"
+                />
+                <span className="text-sm font-medium text-slate-700">Hacer recurrente (Suscripción/Cobro automático)</span>
+              </label>
+
+              {isRecurring && (
+                <div className="grid grid-cols-2 gap-4 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Frecuencia</label>
+                    <select
+                      {...register('frequency')}
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+                    >
+                      <option value="monthly">Mensual</option>
+                      <option value="weekly">Semanal</option>
+                      <option value="yearly">Anual</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Día del mes</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      {...register('dayOfMonth', { valueAsNumber: true })}
+                      className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button
