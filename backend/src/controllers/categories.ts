@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../db';
-import { seedCategories as autoSeedCategories } from '../../prisma/seed';
+import { seedCategories as autoSeedCategories } from '../seed';
 
 export const getCategories = async (req: any, res: Response) => {
   try {

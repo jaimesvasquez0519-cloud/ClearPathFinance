@@ -18,7 +18,7 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 import { prisma } from './db';
-import { seedCategories } from '../prisma/seed';
+import { seedCategories } from './seed';
 import { initRecurringTransactionsCron } from './cron/recurring';
 
 const PORT = process.env.PORT || 5000;
