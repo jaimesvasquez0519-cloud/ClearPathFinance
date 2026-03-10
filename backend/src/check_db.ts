@@ -7,12 +7,12 @@ async function main() {
   try {
     const userCount = await prisma.user.count();
     console.log(`Total users: ${userCount}`);
-
+    
     const users = await prisma.user.findMany({
       select: {
-          email: true,
-          fullName: true,
-          status: true
+        email: true,
+        fullName: true,
+        status: true
       }
     });
     console.log('Users in database:');
