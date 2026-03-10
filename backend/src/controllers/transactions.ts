@@ -19,6 +19,32 @@ export const getTransactions = async (req: any, res: Response) => {
   }
 };
 
+const categorizeByNLP = async (description: string, type: string) => {
+  if (!description) return null;
+  const lowerDesc = description.toLowerCase();
+  
+  const keywords: Record<string, string> = {
+    'uber': 'Uber / Taxi', 'taxi': 'Uber / Taxi', 'didi': 'Uber / Taxi', 'cabify': 'Uber / Taxi',
+    'restaurante': 'Restaurantes / Comer fuera', 'mcdonalds': 'Restaurantes / Comer fuera', 'burger king': 'Restaurantes / Comer fuera', 'kfc': 'Restaurantes / Comer fuera',
+    'starbucks': 'Cafés / Snacks', 'cafe': 'Cafés / Snacks', 'café': 'Cafés / Snacks', 'juan valdez': 'Cafés / Snacks',
+    'netflix': 'Suscripciones', 'spotify': 'Suscripciones', 'amazon prime': 'Suscripciones', 'hbo': 'Suscripciones',
+    'cine': 'Cine / Salidas / Ocio', 'cinecolombia': 'Cine / Salidas / Ocio', 'cinemark': 'Cine / Salidas / Ocio',
+    'smart fit': 'Gimnasio / Deportes', 'gimnasio': 'Gimnasio / Deportes', 'bodytech': 'Gimnasio / Deportes',
+    'farmatodo': 'Farmacia / Medicamentos', 'cruz verde': 'Farmacia / Medicamentos', 'drogueria': 'Farmacia / Medicamentos', 'farmacia': 'Farmacia / Medicamentos',
+    'exito': 'Supermercado', 'carulla': 'Supermercado', 'jumbo': 'Supermercado', 'olimpica': 'Supermercado', 'd1': 'Supermercado', 'ara': 'Supermercado',
+    'peluqueria': 'Cuidado personal / Peluquería', 'barberia': 'Cuidado personal / Peluquería',
+    'gasolina': 'Combustible / Gasolina', 'terpel': 'Combustible / Gasolina', 'esso': 'Combustible / Gasolina', 'primax': 'Combustible / Gasolina',
+  };
+
+  for (const [key, categoryName] of Object.entries(keywords)) {
+    if (lowerDesc.includes(key)) {
+      const category = await prisma.category.findFirst({ where: { name: categoryName, type } });
+      return category ? category.id : null;
+    }
+  }
+  return null;
+};
+
 export const createTransaction = async (req: any, res: Response) => {
   try {
     const { 
@@ -28,6 +54,12 @@ export const createTransaction = async (req: any, res: Response) => {
 
     // Use a transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx: any) => {
+      // 0. Auto-categorize by NLP if missing
+      let finalCategoryId = categoryId;
+      if (!finalCategoryId && description) {
+        finalCategoryId = await categorizeByNLP(description, type);
+      }
+
       // 1. Create the transaction
       const transaction = await tx.transaction.create({
         data: {
@@ -35,7 +67,7 @@ export const createTransaction = async (req: any, res: Response) => {
           type,
           amount,
           currency: 'COP', // simplify for MVP
-          categoryId: categoryId || null,
+          categoryId: finalCategoryId || null,
           accountId: accountId || null,
           cardId: cardId || null,
           description,
@@ -70,6 +102,28 @@ export const createTransaction = async (req: any, res: Response) => {
             where: { id: cardId },
             data: { currentBalance: { decrement: amount } }
           });
+        }
+      }
+
+      // 3. Outlier / Anomaly Detection
+      if (type === 'expense' && finalCategoryId) {
+        const pastExpenses = await tx.transaction.findMany({
+          where: { userId: req.user.id, type: 'expense', categoryId: finalCategoryId }
+        });
+        
+        if (pastExpenses.length > 3) {
+          const sum = pastExpenses.reduce((acc: number, val: any) => acc + Number(val.amount), 0);
+          const avg = sum / pastExpenses.length;
+          
+          if (amount > avg * 1.2) {
+             const updatedDescription = `[ALERTA: Gasto inusual] ${transaction.description || ''}`.trim();
+             await tx.transaction.update({
+               where: { id: transaction.id },
+               data: { description: updatedDescription }
+             });
+             transaction.description = updatedDescription;
+             // Here we could also trigger a push notification or email
+          }
         }
       }
 

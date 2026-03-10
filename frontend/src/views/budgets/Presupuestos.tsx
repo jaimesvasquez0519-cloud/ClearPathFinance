@@ -93,9 +93,10 @@ const Presupuestos = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {budgets?.map((budget: any) => {
-          const pct = Math.min((budget.spentAmount / budget.amountLimit) * 100, 100);
-          const isWarning = pct >= 80 && pct < 100;
-          const isDanger = pct >= 100;
+          const rawPct = (budget.spentAmount / budget.amountLimit) * 100;
+          const pct = Math.min(rawPct, 100);
+          const isDanger = rawPct >= 90;
+          const isWarning = rawPct >= 70 && rawPct < 90;
           
           return (
             <div key={budget.id} className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 relative group transition-all hover:shadow-md">
@@ -143,7 +144,7 @@ const Presupuestos = () => {
               
               <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
                 <div 
-                  className={`h-full rounded-full transition-all duration-500 ${isDanger ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-primary'}`}
+                  className={`h-full rounded-full transition-all duration-500 ${isDanger ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-emerald-500'}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>

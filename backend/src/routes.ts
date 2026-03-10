@@ -6,7 +6,7 @@ import { getCards, createCard, updateCard, deleteCard } from './controllers/card
 import { getTransactions, createTransaction, deleteTransaction, payCreditCard } from './controllers/transactions';
 import { getCategories, createCategory, seedCategories } from './controllers/categories';
 import { getBudgets, createBudget, updateBudget, deleteBudget } from './controllers/budgets';
-import { getDashboardSummary } from './controllers/dashboard';
+import { getDashboardSummary, simulateScenario } from './controllers/dashboard';
 import { getRecurringTransactions, createRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction } from './controllers/recurring';
 import { getPendingUsers, approveUser, rejectUser } from './controllers/admin';
 import { isAdmin } from './middlewares/isAdmin';
@@ -49,6 +49,7 @@ router.delete('/budgets/:id', authenticate, deleteBudget);
 
 // Dashboard
 router.get('/dashboard', authenticate, getDashboardSummary);
+router.post('/dashboard/simulate', authenticate, simulateScenario);
 
 // Recurring
 router.get('/recurring', authenticate, getRecurringTransactions);

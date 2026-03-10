@@ -135,12 +135,94 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       .map(name => ({ name, value: allTimeCategoryExpenses[name] }))
       .sort((a,b) => b.value - a.value);
 
+    // === KPI: BURN RATE & RUNWAY ===
+    const totalHistoricalExpenses = historical
+      .filter((t: any) => t.type === 'expense')
+      .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+    const daysSinceThreeMonthsAgo = Math.max(1, Math.floor((now.getTime() - threeMonthsAgo.getTime()) / (1000 * 60 * 60 * 24)));
+    const burnRate = totalHistoricalExpenses / daysSinceThreeMonthsAgo;
+    const runwayDays = burnRate > 0 ? Math.round(totalBalance / burnRate) : 999;
+
+    // === KPI: TASA DE ESFUERZO (EFFORT RATE) ===
+    let currentMonthDebtPayments = 0;
+    monthlyTransactions.forEach((t: any) => {
+      const amount = Number(t.amount);
+      if (t.type === 'expense') {
+        const catName: string = (t.category?.name || '').toLowerCase();
+        if (catName.includes('hipoteca') || catName.includes('tarjeta') || catName.includes('crédito') || catName.includes('prestamo') || catName.includes('préstamo') || catName.includes('deuda') || t.cardId) {
+          currentMonthDebtPayments += amount;
+        }
+      }
+    });
+    const effortRate = currentMonthIncome > 0 ? (currentMonthDebtPayments / currentMonthIncome) * 100 : 0;
+
+    // === SMART PRO: BALANCE PREDICTION (Linear Regression) ===
+    // Find transactions in the last 30 days to build a running balance
+    // We will approximate linear regression y = mx + b where x is day (0 to 30)
+    // For simplicity, we use the historical transactions to find daily net flow
+    // Calculate b = currentBalance
+    // Calculate m = average daily net flow over last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const recentTx = await prisma.transaction.findMany({
+      where: { userId, transactionDate: { gte: thirtyDaysAgo } }
+    });
+    const netFlow30 = recentTx.reduce((acc: number, t: any) => acc + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0);
+    const dailyTrend = netFlow30 / 30;
+    
+    const currentDay = now.getDate();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysLeft = daysInMonth - currentDay;
+    const predictedEndOfWeekBalance = totalBalance + (dailyTrend * 7);
+    const predictedEndOfMonthBalance = totalBalance + (dailyTrend * daysLeft);
+
+    // === SMART PRO: EXPENSE OPTIMIZATION INSIGHT ===
+    let optimizationInsight = "Tus gastos están bajo control este mes. ¡Sigue así!";
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    const lastMonthTx = await prisma.transaction.findMany({
+      where: { userId, type: 'expense', transactionDate: { gte: lastMonthStart, lte: lastMonthEnd } },
+      include: { category: true }
+    });
+    
+    const lastMonthCategoryTotals: Record<string, number> = {};
+    lastMonthTx.forEach((t: any) => {
+      const cat = t.category?.name || 'Otros';
+      lastMonthCategoryTotals[cat] = (lastMonthCategoryTotals[cat] || 0) + Number(t.amount);
+    });
+
+    let highestExcessCat = '';
+    let highestExcessAmount = 0;
+
+    Object.keys(expenseByCategory).forEach(cat => {
+      const currentM = expenseByCategory[cat];
+      const lastM = lastMonthCategoryTotals[cat] || 0;
+      if (lastM > 0 && currentM > lastM * 1.2) { // 20% more
+        const excess = currentM - lastM;
+        if (excess > highestExcessAmount) {
+          highestExcessAmount = excess;
+          highestExcessCat = cat;
+        }
+      }
+    });
+
+    if (highestExcessCat && highestExcessAmount > 0) {
+      optimizationInsight = `Has gastado $${Math.round(highestExcessAmount).toLocaleString('es-CO')} más en ${highestExcessCat} que el mes pasado promedio. Si reduces esto, podrías alcanzar tus metas de ahorro más rápido.`;
+    }
+    
     res.json({
       totalBalance,
       currentMonthIncome,
       currentMonthExpense,
       netSavings,
       finScore: Math.round(finScore),
+      burnRate,
+      runwayDays,
+      effortRate,
+      predictedEndOfWeekBalance,
+      predictedEndOfMonthBalance,
+      optimizationInsight,
       expensesDistribution,
       monthlyChart,
       creditCards,
@@ -156,3 +238,60 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     res.status(500).json({ error: 'Server error fetching dashboard' });
   }
 };
+
+export const simulateScenario = async (req: any, res: Response) => {
+  try {
+    const { amount, months, name } = req.body;
+    const userId = req.user.id;
+    
+    if (!amount || !months || months <= 0) {
+      return res.status(400).json({ error: 'Valid amount and months required' });
+    }
+
+    const monthlyImpact = Number(amount) / Number(months);
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const monthlyTransactions = await prisma.transaction.findMany({
+      where: { userId, transactionDate: { gte: startOfMonth } },
+      include: { category: true }
+    });
+
+    let currentIncome = 0;
+    let currentExpense = 0;
+    let currentDebtPayments = 0;
+
+    monthlyTransactions.forEach((t: any) => {
+      const amt = Number(t.amount);
+      if (t.type === 'income') {
+        currentIncome += amt;
+      } else if (t.type === 'expense') {
+        currentExpense += amt;
+        const catName: string = (t.category?.name || '').toLowerCase();
+        if (catName.includes('hipoteca') || catName.includes('tarjeta') || catName.includes('crédito') || catName.includes('prestamo') || catName.includes('préstamo') || catName.includes('deuda') || t.cardId) {
+          currentDebtPayments += amt;
+        }
+      }
+    });
+
+    const newMonthlyExpense = currentExpense + monthlyImpact;
+    const newSavings = currentIncome - newMonthlyExpense;
+    const newDebtPayments = currentDebtPayments + monthlyImpact;
+    const newEffortRate = currentIncome > 0 ? (newDebtPayments / currentIncome) * 100 : 0;
+    const currentEffortRate = currentIncome > 0 ? (currentDebtPayments / currentIncome) * 100 : 0;
+
+    res.json({
+      scenarioName: name || 'Simulación',
+      monthlyImpact,
+      projectedExpense: newMonthlyExpense,
+      projectedSavings: newSavings,
+      projectedEffortRate: newEffortRate,
+      currentEffortRate,
+      isDangerous: newEffortRate > 40 || newSavings < 0
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error running simulation' });
+  }
+};
+
