@@ -22,18 +22,25 @@ export const getRecurringTransactions = async (req: any, res: Response) => {
 export const createRecurringTransaction = async (req: any, res: Response) => {
   try {
     const { 
-      type, amount, currency, categoryId, accountId, cardId, description, frequency, dayOfMonth 
+      type, amount, categoryId, accountId, cardId, description, frequency, dayOfMonth 
     } = req.body;
+
+    // Defensive: normalize empty strings to null and provide defaults
+    const safeAccountId = accountId && accountId !== '' ? accountId : null;
+    const safeCardId = cardId && cardId !== '' ? cardId : null;
+    const safeCategoryId = categoryId && categoryId !== '' ? categoryId : null;
+    const safeFrequency = frequency || 'monthly';
+    const safeDayOfMonth = Number(dayOfMonth) || new Date().getDate();
 
     // Calculate next processing date based on dayOfMonth
     const now = new Date();
-    let nextDate = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
+    let nextDate = new Date(now.getFullYear(), now.getMonth(), safeDayOfMonth);
 
     // If the day has already passed this month, the first processing is next month
     if (nextDate <= now) {
        nextDate = addMonths(nextDate, 1);
        const maxDaysInNextMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate();
-       nextDate.setDate(Math.min(dayOfMonth, maxDaysInNextMonth));
+       nextDate.setDate(Math.min(safeDayOfMonth, maxDaysInNextMonth));
     }
 
     const recurring = await prisma.recurringTransaction.create({
@@ -41,19 +48,20 @@ export const createRecurringTransaction = async (req: any, res: Response) => {
         userId: req.user.id,
         type, 
         amount: Number(amount), 
-        currency: currency || 'COP', 
-        categoryId: categoryId || null, 
-        accountId: accountId || null, 
-        cardId: cardId || null, 
+        currency: 'COP',
+        categoryId: safeCategoryId,
+        accountId: safeAccountId,
+        cardId: safeCardId,
         description, 
-        frequency: frequency || 'monthly', 
-        dayOfMonth: Number(dayOfMonth),
+        frequency: safeFrequency, 
+        dayOfMonth: safeDayOfMonth,
         nextProcessing: nextDate,
         isActive: true,
       },
     });
     res.status(201).json(recurring);
   } catch (error) {
+    console.error('❌ Error creating recurring transaction:', error);
     res.status(500).json({ error: 'Server error creating recurring transaction' });
   }
 };
