@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, CreditCard, Wallet, List, LogOut, Target, Users } from 'lucide-react';
+import { LayoutDashboard, CreditCard, Wallet, List, LogOut, Target, Users, Landmark } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useEffect } from 'react';
 import api from '../../utils/api';
@@ -39,8 +39,11 @@ const AppLayout = () => {
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-primary">Control de Finanzas</h1>
+        <div className="p-6 flex items-center gap-3">
+          <div className="bg-primary/10 p-2 rounded-xl">
+            <Landmark className="text-primary w-6 h-6" />
+          </div>
+          <h1 className="text-xl font-black text-slate-800 tracking-tight leading-tight">Control de <br/><span className="text-primary">Finanzas</span></h1>
         </div>
         
         <nav className="flex-1 px-4 space-y-2">

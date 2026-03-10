@@ -43,12 +43,12 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       .map((key) => ({ name: key, value: expenseByCategory[key] }))
       .sort((a, b) => (b.value || 0) - (a.value || 0));
 
-    // === HISTORICAL: last 6 months ===
-    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    // === HISTORICAL: last 3 months ===
+    const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     const historical = await prisma.transaction.findMany({
       where: {
         userId,
-        transactionDate: { gte: sixMonthsAgo },
+        transactionDate: { gte: threeMonthsAgo },
         type: { in: ['income', 'expense'] },
       },
       select: { type: true, amount: true, transactionDate: true },
@@ -58,7 +58,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const monthMap: Record<string, { month: string; ingresos: number; gastos: number }> = {};
 
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 2; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       monthMap[key] = { month: monthNames[d.getMonth()] || '', ingresos: 0, gastos: 0 };
@@ -103,6 +103,33 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true }
     });
 
+    // === ALL-TIME CATEGORY EXPENSES & EMERGENCY FUND ===
+    const allTransactions = await prisma.transaction.findMany({
+      where: { userId },
+      include: { category: true }
+    });
+
+    let emergencyFundTotal = 0;
+    const allTimeCategoryExpenses: Record<string, number> = {};
+
+    allTransactions.forEach((t: any) => {
+      const amount = Number(t.amount);
+      const catName = t.category?.name || 'Sin categoría';
+      
+      // We assume money moved to "Fondo de emergencia" either as expense or transfer counts towards the total saved in it
+      if (catName.toLowerCase().includes('emergencia')) {
+        emergencyFundTotal += amount;
+      }
+
+      if (t.type === 'expense') {
+        allTimeCategoryExpenses[catName] = (allTimeCategoryExpenses[catName] || 0) + amount;
+      }
+    });
+
+    const allTimeExpensesList = Object.keys(allTimeCategoryExpenses)
+      .map(name => ({ name, value: allTimeCategoryExpenses[name] }))
+      .sort((a,b) => b.value - a.value);
+
     res.json({
       totalBalance,
       currentMonthIncome,
@@ -112,6 +139,8 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       expensesDistribution,
       monthlyChart,
       creditCards,
+      emergencyFundTotal,
+      allTimeExpensesList,
       recentTransactions: monthlyTransactions
         .sort((a: any, b: any) => new Date(b.createdAt || b.transactionDate).getTime() - new Date(a.createdAt || a.transactionDate).getTime())
         .slice(0, 5),

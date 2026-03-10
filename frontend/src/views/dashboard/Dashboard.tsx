@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, Layers, AlertCircle, CreditCard as CardIcon } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Layers, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
 
 const PIE_COLORS = [
   '#f43f5e', // rose
@@ -35,23 +36,25 @@ const KpiCard = ({
   title, value, sub, icon: Icon, accent = false,
 }: { title: string; value: string; sub?: string; icon: any; accent?: boolean }) => (
   <div
-    className={`p-6 rounded-2xl shadow-sm border flex flex-col justify-between hover:shadow-md transition-shadow ${
+    className={`p-6 rounded-3xl shadow-md border flex flex-col justify-between hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ${
       accent
-        ? 'bg-slate-900 border-slate-800 text-white'
-        : 'bg-white/80 backdrop-blur-md border-slate-200/60 text-slate-900'
+        ? 'bg-gradient-to-br from-slate-900 to-slate-800 border-slate-700 text-white'
+        : 'bg-white/90 backdrop-blur-xl border-slate-200/60 text-slate-900'
     }`}
   >
-    <div className={`flex justify-between items-center mb-3 ${accent ? '' : ''}`}>
-      <p className={`text-xs font-semibold uppercase tracking-wider ${accent ? 'text-slate-400' : 'text-slate-500'}`}>
+    <div className={`flex justify-between items-center mb-4`}>
+      <p className={`text-xs font-bold uppercase tracking-widest ${accent ? 'text-slate-300' : 'text-slate-500'}`}>
         {title}
       </p>
-      <Icon size={18} className={accent ? 'text-slate-500' : 'text-slate-400'} />
+      <div className={`p-2 rounded-xl ${accent ? 'bg-white/10 text-white' : 'bg-primary/10 text-primary'}`}>
+         <Icon size={20} className={accent ? 'text-white' : 'text-primary'} />
+      </div>
     </div>
-    <p className={`text-2xl font-extrabold tracking-tight ${accent ? 'text-white' : 'text-slate-900'}`}>
+    <p className={`text-3xl font-black tracking-tight ${accent ? 'text-white' : 'text-slate-900'}`}>
       {value}
     </p>
     {sub && (
-      <p className={`text-xs mt-1 font-medium ${accent ? 'text-slate-500' : 'text-slate-400'}`}>{sub}</p>
+      <p className={`text-xs mt-2 font-semibold ${accent ? 'text-slate-400' : 'text-slate-500'}`}>{sub}</p>
     )}
   </div>
 );
@@ -71,6 +74,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 const Dashboard = () => {
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboardSummary'],
     queryFn: async () => (await api.get('/dashboard')).data,
@@ -134,7 +139,14 @@ const Dashboard = () => {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <KpiCard
+          title="Fondo Emergencia"
+          value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
+          sub="Ahorro Histórico"
+          icon={ShieldCheck}
+          accent
+        />
         <KpiCard
           title="Balance Total"
           value={`$${formatCOPFull(data?.totalBalance ?? 0)}`}
@@ -156,7 +168,6 @@ const Dashboard = () => {
           value={`${netPositive ? '+' : '-'}$${formatCOPFull(Math.abs(data?.netSavings ?? 0))}`}
           sub={`FinScore: ${data?.finScore ?? '–'}/100`}
           icon={Layers}
-          accent
         />
       </div>
 
@@ -310,6 +321,41 @@ const Dashboard = () => {
                <p className="text-sm font-medium">No hay fechas de pago cercanas</p>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Category Expense Filter */}
+      <div className="bg-white/80 backdrop-blur-md rounded-3xl shadow-md border border-slate-200/60 p-7">
+        <h3 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+          <Filter size={20} className="text-primary" />
+          Consulta Histórica de Gastos por Categoría
+        </h3>
+        <div className="flex flex-col md:flex-row gap-6 items-center">
+            <select
+              className="w-full md:w-80 p-4 rounded-xl border-2 border-slate-200 bg-slate-50 focus:ring-4 focus:ring-primary/20 focus:border-primary outline-none text-slate-700 font-semibold transition-all"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+            >
+              <option value="">Selecciona una categoría...</option>
+              {data?.allTimeExpensesList?.map((cat: any) => (
+                <option key={cat.name} value={cat.name}>{cat.name}</option>
+              ))}
+            </select>
+            
+            {selectedCategory ? (
+              <div className="flex-1 w-full bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 flex flex-col md:flex-row justify-between items-center shadow-lg border border-slate-700">
+                 <span className="text-base font-semibold text-slate-300 mb-2 md:mb-0">
+                   Total gastado en <span className="text-white font-bold">{selectedCategory}</span>
+                 </span>
+                 <span className="text-3xl font-black text-rose-400 tracking-tight">
+                    ${formatCOPFull(data?.allTimeExpensesList?.find((c: any) => c.name === selectedCategory)?.value || 0)}
+                 </span>
+              </div>
+            ) : (
+              <div className="flex-1 w-full bg-slate-100/50 rounded-2xl p-6 flex justify-center items-center border border-dashed border-slate-300">
+                 <span className="text-sm font-medium text-slate-400">Selecciona una categoría para ver su historial completo de gastos.</span>
+              </div>
+            )}
         </div>
       </div>
     </div>
