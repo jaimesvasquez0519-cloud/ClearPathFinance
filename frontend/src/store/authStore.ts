@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import api from '../utils/api';
 
 interface User {
   id: string;
@@ -15,9 +16,10 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') as string) : null,
   token: localStorage.getItem('token') || null,
   isAuthenticated: !!localStorage.getItem('token'),
@@ -32,5 +34,18 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     set({ user: null, token: null, isAuthenticated: false });
+  },
+
+  refreshUser: async () => {
+    try {
+      const token = get().token;
+      if (!token) return;
+      const res = await api.get('/auth/me');
+      const freshUser = res.data;
+      localStorage.setItem('user', JSON.stringify(freshUser));
+      set({ user: freshUser });
+    } catch {
+      // Silently ignore
+    }
   },
 }));

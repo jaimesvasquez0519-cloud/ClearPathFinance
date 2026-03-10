@@ -5,16 +5,18 @@ import { useEffect } from 'react';
 import api from '../../utils/api';
 
 const AppLayout = () => {
-  const { user, logout } = useAuthStore();
+  const { user, logout, refreshUser } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Auto-seed categories silently on first load
+  // On mount: refresh user data (to get latest role/status) + seed categories
   useEffect(() => {
+    refreshUser();
     api.post('/categories/seed').catch(() => {
       // Silently ignore - categories may already exist
     });
   }, []);
+
 
   const handleLogout = () => {
     logout();
