@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
   PieChart, Pie, Cell,
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter, Flame, PlaneTakeoff, Percent, Calculator, X } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
 
 const PIE_COLORS = [
   '#f43f5e', // rose
@@ -72,27 +72,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const Dashboard = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   
-  // Simulator State
-  const [showSim, setShowSim] = useState(false);
-  const [simName, setSimName] = useState('');
-  const [simAmount, setSimAmount] = useState('');
-  const [simMonths, setSimMonths] = useState('');
-  const [simResult, setSimResult] = useState<any>(null);
-
-  const handleSimulate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      const res = await api.post('/dashboard/simulate', {
-        name: simName || 'Simulación',
-        amount: Number(simAmount),
-        months: Number(simMonths)
-      });
-      setSimResult(res.data);
-    } catch (err) {
-      alert('Error ejecutando simulación');
-    }
-  };
-  
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboardSummary'],
     queryFn: async () => (await api.get('/dashboard')).data,
@@ -153,42 +132,8 @@ const Dashboard = () => {
         </p>
       </div>
 
-      {/* Smart Insights Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-2">
-        {data?.optimizationInsight && (
-          <div className="bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl p-6 shadow-md text-white flex items-start gap-4">
-            <div className="p-3 bg-white/20 rounded-2xl shrink-0 mt-1">
-              <AlertCircle size={22} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-base tracking-wide">💡 Optimización</h3>
-              <p className="text-white/90 font-medium mt-1 text-sm leading-relaxed">{data.optimizationInsight}</p>
-            </div>
-          </div>
-        )}
-        {data?.predictedEndOfMonthBalance !== undefined && (
-          <div className="bg-gradient-to-r from-emerald-600 to-teal-700 rounded-2xl p-6 shadow-md text-white flex items-start gap-4">
-            <div className="p-3 bg-white/20 rounded-2xl shrink-0 mt-1">
-              <TrendingUp size={22} className="text-white" />
-            </div>
-            <div>
-              <h3 className="font-bold text-base tracking-wide">📈 Predicción Fin Mes</h3>
-              <p className="text-white/90 font-medium mt-1 text-sm leading-relaxed">
-                El saldo proyectado a fin de mes es <strong className="text-white text-base">${formatCOPFull(data.predictedEndOfMonthBalance)}</strong>.
-              </p>
-            </div>
-          </div>
-        )}
-        
-        <div className="bg-gradient-to-r from-blue-600 to-cyan-700 rounded-2xl p-6 shadow-md text-white flex flex-col justify-center items-start gap-2">
-            <h3 className="font-bold text-base tracking-wide flex items-center gap-2"><Calculator size={20} /> Simulador Pro</h3>
-            <p className="text-sm text-white/90 font-medium">¿Qué pasa si adquieres un nuevo crédito o gasto recurrente?</p>
-            <button onClick={() => setShowSim(true)} className="mt-2 bg-white text-blue-700 px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-50 transition w-full text-center">Simular Escenario</button>
-        </div>
-      </div>
-
       {/* KPI Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Balance Total"
           value={`$${formatCOPFull(data?.totalBalance ?? 0)}`}
@@ -215,114 +160,42 @@ const Dashboard = () => {
           icon={ShieldCheck}
           gradient="bg-gradient-to-br from-violet-500 to-purple-800"
         />
-      </div>
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <KpiCard
-          title="Tasa de Esfuerzo"
-          value={`${(data?.effortRate ?? 0).toFixed(1)}%`}
-          sub="Deuda / Ingresos"
-          icon={Percent}
-          gradient="bg-gradient-to-br from-amber-500 to-orange-700"
-        />
-        <KpiCard
-          title="Burn Rate"
-          value={`$${formatCOPFull(data?.burnRate ?? 0)}`}
-          sub="Gasto promedio diario"
-          icon={Flame}
-          gradient="bg-gradient-to-br from-red-500 to-rose-700"
-        />
-        <KpiCard
-          title="Runway"
-          value={`${data?.runwayDays ?? 0}`}
-          sub="Días de supervivencia"
-          icon={PlaneTakeoff}
-          gradient="bg-gradient-to-br from-blue-500 to-cyan-700"
+          title="Fondo Emergencia"
+          value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
+          sub="Histórico"
+          icon={ShieldCheck}
+          gradient="bg-gradient-to-br from-slate-700 to-slate-900"
         />
       </div>
 
       {/* Charts Row */}
-      <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 mb-6">
-        <h3 className="text-base font-bold text-slate-800 mb-5">Tendencia Múltiple — Últimos 6 meses</h3>
-        {data?.monthlyChart?.some((m: any) => m.ingresos > 0 || m.gastos > 0) ? (
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={data.monthlyChart} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="colorIngresos" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                </linearGradient>
-                <linearGradient id="colorGastos" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.4}/>
-                  <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-              <YAxis tickFormatter={formatCOP} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-slate-600 font-medium capitalize">{v}</span>} />
-              <Area type="monotone" dataKey="ingresos" name="Ingresos" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorIngresos)" />
-              <Area type="monotone" dataKey="gastos" name="Gastos" stroke="#f43f5e" strokeWidth={3} fillOpacity={1} fill="url(#colorGastos)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">
-            Sin datos históricos aún
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Donut chart Fondo Emergencia */}
-        {(() => {
-          const goal = (data?.burnRate || 0) * 90; // Meta de 3 meses
-          const current = data?.emergencyFundTotal || 0;
-          const pct = goal > 0 ? Math.min((current / goal) * 100, 100) : 0;
-          const remains = Math.max(goal - current, 0);
-          const donutData = goal > 0 
-              ? [{ name: 'Ahorrado', value: current }, { name: 'Faltante', value: remains }]
-              : [{ name: 'Ahorrado', value: 1 }]; // Placeholder si burnRate es 0
-          
-          return (
-            <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col">
-              <div className="flex justify-between items-center mb-5">
-                <h3 className="text-base font-bold text-slate-800">Fondo de Emergencia</h3>
-                <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded-full border border-emerald-200">Meta 3 Meses</span>
-              </div>
-              <div className="relative w-full h-[180px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={donutData}
-                      cx="50%" cy="50%"
-                      innerRadius={65} outerRadius={85}
-                      paddingAngle={4}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      <Cell fill="#10b981" />
-                      <Cell fill="#f1f5f9" />
-                    </Pie>
-                    <Tooltip formatter={(v: any) => [`$${formatCOPFull(v)}`, 'COP']} contentStyle={{ borderRadius: 12, border: '1px solid #e2e8f0', fontSize: 12 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <span className="text-3xl font-black text-slate-800 tracking-tight">{pct.toFixed(0)}<span className="text-xl">%</span></span>
-                </div>
-              </div>
-              <div className="w-full mt-auto pt-4 flex justify-between items-center text-sm border-t border-slate-100">
-                <div className="flex flex-col">
-                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Ahorrado</span>
-                  <span className="font-bold text-emerald-600 text-base">${formatCOPFull(current)}</span>
-                </div>
-                <div className="flex flex-col text-right">
-                  <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">Meta</span>
-                  <span className="font-bold text-slate-700 text-base">${formatCOPFull(goal)}</span>
-                </div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Bar chart — last 6 months */}
+        <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
+          <h3 className="text-base font-bold text-slate-800 mb-5">Ingresos vs Gastos — Últimos 6 meses</h3>
+          {data?.monthlyChart?.some((m: any) => m.ingresos > 0 || m.gastos > 0) ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={data.monthlyChart} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={formatCOP} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  formatter={(v) => <span className="text-xs text-slate-600 font-medium capitalize">{v}</span>}
+                />
+                <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="gastos" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">
+              Sin datos históricos aún
             </div>
-          );
-        })()}
+          )}
+        </div>
 
         {/* Pie chart */}
         <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
@@ -483,75 +356,6 @@ const Dashboard = () => {
             )}
         </div>
       </div>
-
-      {/* Simulator Modal */}
-      {showSim && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shadow-sm">
-              <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2"><Calculator size={20} className="text-primary"/> Simulador de Escenarios</h3>
-              <button onClick={() => setShowSim(false)} className="text-slate-400 hover:text-slate-600 bg-white p-1 rounded-full shadow-sm">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 overflow-y-auto">
-              {!simResult ? (
-                <form onSubmit={handleSimulate} className="space-y-4">
-                  <p className="text-sm text-slate-600 mb-4">Ingresa los datos de una compra a plazos o gasto futuro para analizar cómo afectará tu flujo de caja.</p>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">Nombre (ej: iPhone, Compra Moto)</label>
-                    <input type="text" value={simName} onChange={e => setSimName(e.target.value)} required className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">Valor Total (COP)</label>
-                    <input type="number" value={simAmount} onChange={e => setSimAmount(e.target.value)} required className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">Plazo (Meses)</label>
-                    <input type="number" min="1" value={simMonths} onChange={e => setSimMonths(e.target.value)} required className="w-full px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-primary focus:border-primary outline-none" />
-                  </div>
-                  <button type="submit" className="w-full bg-primary hover:bg-primary-dark text-white font-bold py-3 mt-4 rounded-xl shadow transition text-sm">Ejecutar Simulación</button>
-                </form>
-              ) : (
-                <div className="space-y-5">
-                   <div className={`p-4 rounded-2xl border ${simResult.isDangerous ? 'bg-red-50 border-red-200 text-red-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'}`}>
-                      <h4 className="font-bold flex items-center gap-2 mb-2">
-                        {simResult.isDangerous ? <AlertCircle size={20}/> : <ShieldCheck size={20}/>} 
-                        Resultado: {simResult.isDangerous ? 'Riesgo Alto' : 'Viable'}
-                      </h4>
-                      <p className="text-sm opacity-90">{simResult.isDangerous ? 'Este gasto compromete tu capacidad de ahorro y excede el límite recomendado de esfuerzo financiero.' : 'Tu flujo de caja puede soportar este impacto cómodamente.'}</p>
-                   </div>
-                   
-                   <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Impacto Mensual</p>
-                        <p className="text-lg font-black text-slate-800 mt-1">${formatCOPFull(simResult.monthlyImpact)}</p>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                        <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Ahorro Restante</p>
-                        <p className={`text-lg font-black mt-1 ${simResult.projectedSavings < 0 ? 'text-red-600' : 'text-emerald-600'}`}>${formatCOPFull(simResult.projectedSavings)}</p>
-                      </div>
-                   </div>
-
-                   <div>
-                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-2 mt-4">
-                        <span>Tasa de Esfuerzo (Antes)</span>
-                        <span>{simResult.currentEffortRate.toFixed(1)}%</span>
-                      </div>
-                      <div className="flex justify-between text-xs font-bold text-slate-800 mb-1">
-                        <span>Tasa de Esfuerzo (Proyectada)</span>
-                        <span className={simResult.projectedEffortRate > 40 ? 'text-red-500' : ''}>{simResult.projectedEffortRate.toFixed(1)}%</span>
-                      </div>
-                   </div>
-
-                   <button onClick={() => setSimResult(null)} className="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-3 rounded-xl transition text-sm">Nueva simulación</button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };
