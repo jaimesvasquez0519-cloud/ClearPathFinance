@@ -108,6 +108,8 @@ model Transaction {
   installmentsTotal  Int         @default(1) @map("installments_total")
   installmentCurrent Int         @default(1) @map("installment_current")
   installmentInterestRate Float? @map("installment_interest_rate")
+  isDeferred         Boolean     @default(false) @map("is_deferred")
+  amortizationSchedule Json?     @map("amortization_schedule")
   receiptUrl         String?     @map("receipt_url")
   isRecurring        Boolean     @default(false) @map("is_recurring")
   createdAt          DateTime    @default(now()) @map("created_at")

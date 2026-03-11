@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { PlusCircle, Pencil, Trash2, PiggyBank, CheckCircle2, AlertCircle } from 'lucide-react';
+import { PlusCircle, Pencil, Trash2, PiggyBank, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react';
 import api from '../../utils/api';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -42,8 +42,8 @@ const Savings = () => {
   const [showModal, setShowModal] = useState(false);
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
-  const [globalGoalInput, setGlobalGoalInput] = useState('');
-  const [showGlobalInput, setShowGlobalInput] = useState(false);
+  const [depositGoal, setDepositGoal] = useState<Goal | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
 
   // Fetch goals
   const { data: goals = [], isLoading } = useQuery<Goal[]>({
@@ -58,8 +58,8 @@ const Savings = () => {
     staleTime: 60_000,
   });
 
-  const globalSavingsGoal = dashboard?.globalSavingsGoal || 0;
-  const savingsTotal = dashboard?.savingsTotal || 0;
+  const globalSavingsBalance = dashboard?.globalSavingsBalance || 0;
+  const pocketsTotalAllocated = dashboard?.pocketsTotalAllocated || 0;
   const emergencyTotal = dashboard?.emergencyFundTotal || 0;
   const emergencyTarget = dashboard?.emergencyFundTarget || 0;
 
@@ -81,11 +81,6 @@ const Savings = () => {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/goals/${id}`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['goals'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); },
-  });
-
-  const updateGlobalGoal = useMutation({
-    mutationFn: (val: number) => api.put('/auth/settings', { globalSavingsGoal: val }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['dashboard'] }); setShowGlobalInput(false); },
   });
 
   // Handlers
@@ -122,7 +117,19 @@ const Savings = () => {
     }
   };
 
-  const globalPct = globalSavingsGoal > 0 ? Math.min(100, (savingsTotal / globalSavingsGoal) * 100) : 0;
+  const handleDeposit = () => {
+     if(depositGoal && Number(depositAmount) > 0) {
+        updateMutation.mutate({ 
+          id: depositGoal.id, 
+          currentAmount: Number(depositGoal.currentAmount) + Number(depositAmount) 
+        });
+        setDepositGoal(null);
+        setDepositAmount('');
+     }
+  };
+
+  const unallocatedSavings = Math.max(0, globalSavingsBalance - pocketsTotalAllocated);
+  const allocationPct = globalSavingsBalance > 0 ? Math.min(100, (pocketsTotalAllocated / globalSavingsBalance) * 100) : 0;
 
   return (
     <div className="space-y-8">
@@ -141,47 +148,32 @@ const Savings = () => {
       </div>
 
       {/* ── Global Savings Goal Banner ── */}
-      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-2xl p-6 text-white shadow-lg">
+      <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-7 text-white shadow-xl shadow-indigo-200">
         <div className="flex justify-between items-start mb-3">
           <div>
-            <p className="text-indigo-200 text-sm font-medium">Meta Global de Ahorro</p>
-            <p className="text-3xl font-black mt-1">{fmt(savingsTotal)}</p>
-            {globalSavingsGoal > 0 && (
-              <p className="text-indigo-200 text-sm mt-1">de {fmt(globalSavingsGoal)} ({globalPct.toFixed(1)}%)</p>
-            )}
+            <p className="text-indigo-200 text-sm font-semibold uppercase tracking-wider mb-1">Balance Global de Ahorros</p>
+            <p className="text-4xl font-black mt-1 tracking-tight">{fmt(globalSavingsBalance)}</p>
+            <p className="text-indigo-200 font-medium text-sm mt-2">
+              <span className="text-white font-bold">{fmt(pocketsTotalAllocated)}</span> asignado a bolsillos ({allocationPct.toFixed(1)}%)
+            </p>
           </div>
-          <button
-            onClick={() => { setGlobalGoalInput(String(globalSavingsGoal || '')); setShowGlobalInput(v => !v); }}
-            className="bg-white/20 hover:bg-white/30 text-white text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
-          >
-            {globalSavingsGoal > 0 ? 'Editar meta' : 'Definir meta'}
-          </button>
+          <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-sm">
+             <ShieldCheck size={28} className="text-indigo-100" />
+          </div>
         </div>
 
-        {showGlobalInput && (
-          <div className="flex gap-2 mt-2">
-            <input
-              type="number"
-              value={globalGoalInput}
-              onChange={e => setGlobalGoalInput(e.target.value)}
-              placeholder="Meta global en COP"
-              className="flex-1 rounded-lg px-3 py-2 text-slate-800 text-sm"
-            />
-            <button
-              onClick={() => updateGlobalGoal.mutate(Number(globalGoalInput))}
-              className="bg-white text-indigo-700 font-bold px-4 py-2 rounded-lg text-sm hover:bg-indigo-50 transition-colors"
-            >
-              Guardar
-            </button>
-          </div>
-        )}
-
-        {globalSavingsGoal > 0 && (
-          <div className="mt-3 h-2 bg-white/20 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-white rounded-full transition-all duration-700"
-              style={{ width: `${globalPct}%` }}
-            />
+        {globalSavingsBalance > 0 && (
+          <div className="mt-5">
+             <div className="flex justify-between text-xs font-bold uppercase tracking-wider mb-2 text-indigo-100/80">
+                <span>Asignado</span>
+                <span>Sin asignar: {fmt(unallocatedSavings)}</span>
+             </div>
+             <div className="h-2.5 bg-black/20 rounded-full overflow-hidden shadow-inner">
+               <div
+                 className="h-full bg-emerald-400 rounded-full transition-all duration-1000 shadow-[inset_0_2px_4px_rgba(255,255,255,0.3)]"
+                 style={{ width: `${allocationPct}%` }}
+               />
+             </div>
           </div>
         )}
       </div>
@@ -193,16 +185,27 @@ const Savings = () => {
         </h3>
 
         {emergencies.length === 0 ? (
-          <div className="bg-amber-50 border-2 border-dashed border-amber-200 rounded-2xl p-6 text-center">
-            <AlertCircle size={36} className="mx-auto text-amber-300 mb-3" />
-            <p className="text-amber-700 font-medium text-sm">No tienes un fondo de emergencia configurado.</p>
-            <p className="text-amber-500 text-xs mt-1">Crea uno haciendo clic en "Nuevo Bolsillo" y elige el tipo 🛡️ Emergencia.</p>
-            <button
-              onClick={() => { setForm({ ...emptyForm, type: 'emergency', icon: '🛡️' }); setEditGoal(null); setShowModal(true); }}
-              className="mt-3 bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors"
-            >
-              + Crear Fondo de Emergencia
-            </button>
+          <div className="bg-amber-50 border-2 border-dashed border-amber-200 rounded-2xl p-6 flex flex-col items-center shadow-sm">
+            <AlertCircle size={36} className="text-amber-300 mb-3" />
+            <p className="text-amber-700 font-bold text-sm text-center">No tienes un fondo de emergencia configurado.</p>
+            <p className="text-amber-500 font-medium text-xs mt-1 text-center">Ingresa la meta para empezar a ahorrar.</p>
+            
+            <div className="mt-4 flex gap-2 w-full max-w-sm">
+              <input 
+                type="number" 
+                placeholder="Meta ($)" 
+                value={form.targetAmount}
+                onChange={e => setForm({...emptyForm, type: 'emergency', icon: '🛡️', targetAmount: e.target.value, name: 'Fondo de Emergencia'})}
+                className="flex-1 rounded-xl border border-amber-200 px-4 py-2 text-sm text-amber-900 font-semibold focus:ring-2 focus:ring-amber-500 outline-none shadow-sm"
+              />
+              <button 
+                onClick={handleSubmit} 
+                disabled={!form.targetAmount}
+                className="bg-amber-500 hover:bg-amber-600 text-white font-bold py-2 px-5 rounded-xl text-sm transition-colors disabled:opacity-50 shadow-sm"
+              >
+                Crear
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -253,7 +256,7 @@ const Savings = () => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {pockets.map(g => <GoalCard key={g.id} goal={g} onEdit={openEdit} onDelete={id => deleteMutation.mutate(id)} />)}
+            {pockets.map(g => <GoalCard key={g.id} goal={g} onEdit={openEdit} onDelete={id => deleteMutation.mutate(id)} onDeposit={setDepositGoal} />)}
           </div>
         )}
       </section>
@@ -355,12 +358,53 @@ const Savings = () => {
           </div>
         </div>
       )}
+
+      {/* ── Deposit Modal ── */}
+      {depositGoal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-5">
+             <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                <div className="text-3xl bg-indigo-50 p-2 rounded-xl">{depositGoal.icon || '💰'}</div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">Mover fondos a</h3>
+                  <p className="text-sm font-semibold text-indigo-600 leading-tight">{depositGoal.name}</p>
+                </div>
+             </div>
+             
+             <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2">Monto a depositar (COP)</label>
+                <input
+                  type="number"
+                  value={depositAmount}
+                  onChange={e => setDepositAmount(e.target.value)}
+                  placeholder="Ej: 50000"
+                  className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-semibold text-slate-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                  autoFocus
+                />
+                <p className="text-xs font-medium text-slate-500 mt-2">
+                  Saldo sin asignar: <span className="text-slate-700 font-bold">{fmt(unallocatedSavings)}</span>
+                </p>
+             </div>
+
+             <div className="flex gap-3 pt-2">
+               <button onClick={() => { setDepositGoal(null); setDepositAmount(''); }} className="flex-1 py-2.5 border-2 border-slate-200 rounded-xl text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+               <button
+                 onClick={handleDeposit}
+                 disabled={!depositAmount || Number(depositAmount) <= 0 || updateMutation.isPending}
+                 className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-black tracking-wide hover:bg-indigo-700 transition-colors shadow-md disabled:opacity-50 disabled:shadow-none"
+               >
+                 {updateMutation.isPending ? 'Depositando...' : 'Depositar'}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // ─── GoalCard Sub-component ───────────────────────────────────────────────────
-const GoalCard = ({ goal, onEdit, onDelete }: { goal: Goal; onEdit: (g: Goal) => void; onDelete: (id: string) => void }) => {
+const GoalCard = ({ goal, onEdit, onDelete, onDeposit }: { goal: Goal; onEdit: (g: Goal) => void; onDelete: (id: string) => void; onDeposit?: (g: Goal) => void }) => {
   const p = pct(goal.currentAmount, goal.targetAmount);
   const done = p >= 100;
   const color = goal.color || '#6366f1';
@@ -405,6 +449,17 @@ const GoalCard = ({ goal, onEdit, onDelete }: { goal: Goal; onEdit: (g: Goal) =>
           )}
         </div>
       </div>
+
+      {onDeposit && !done && (
+        <div className="mt-4 pt-3 border-t border-slate-100 flex justify-end flex-wrap gap-2">
+           <button 
+             onClick={() => onDeposit(goal)}
+             className="text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5"
+           >
+             <PlusCircle size={14} /> Depositar fondos
+           </button>
+        </div>
+      )}
     </div>
   );
 };

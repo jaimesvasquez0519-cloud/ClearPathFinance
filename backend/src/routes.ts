@@ -3,7 +3,7 @@ import { authenticate } from './middleware/auth';
 import { register, login, getMe, forgotPassword, resetPassword, updateSettings } from './controllers/auth';
 import { getAccounts, createAccount, updateAccount, deleteAccount } from './controllers/accounts';
 import { getCards, createCard, updateCard, deleteCard } from './controllers/cards';
-import { getTransactions, createTransaction, deleteTransaction, payCreditCard } from './controllers/transactions';
+import { getTransactions, createTransaction, deleteTransaction, payCreditCard, extraordinaryPayment } from './controllers/transactions';
 import { getCategories, createCategory, seedCategories } from './controllers/categories';
 import { getBudgets, createBudget, updateBudget, deleteBudget } from './controllers/budgets';
 import { getDashboardSummary, simulateScenario } from './controllers/dashboard';
@@ -36,7 +36,8 @@ router.delete('/cards/:id', authenticate, deleteCard);
 // Transactions
 router.get('/transactions', authenticate, getTransactions);
 router.post('/transactions', authenticate, createTransaction);
-router.post('/transactions/pay-card', authenticate, payCreditCard);
+router.post('/transactions/extraordinary-payment', authenticate, extraordinaryPayment);
+router.post('/transactions/pay-credit-card', authenticate, payCreditCard);
 router.delete('/transactions/:id', authenticate, deleteTransaction);
 
 // Categories

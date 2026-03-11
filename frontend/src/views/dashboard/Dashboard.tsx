@@ -55,6 +55,29 @@ const KpiCard = ({
   </div>
 );
 
+const ProgressKpiCard = ({ title, current, target, icon: Icon, gradient }: any) => {
+  const pct = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  return (
+    <div className={`p-6 rounded-3xl shadow-lg flex flex-col justify-between hover:shadow-2xl hover:-translate-y-1.5 transition-all duration-300 text-white ${gradient}`}>
+      <div className="flex justify-between items-center mb-4">
+        <p className="text-xs font-bold uppercase tracking-widest text-white/70">{title}</p>
+        <div className="p-2 rounded-xl bg-white/20 backdrop-blur-sm">
+           <Icon size={20} className="text-white" />
+        </div>
+      </div>
+      <div>
+        <p className="text-2xl font-black tracking-tight text-white mb-2 truncate">
+          ${formatCOPFull(current)} <span className="text-xs font-medium text-white/60">/ {formatCOPFull(target)}</span>
+        </p>
+        <div className="w-full bg-black/20 rounded-full h-1.5 mb-1 overflow-hidden">
+          <div className="bg-white h-1.5 rounded-full" style={{ width: `${pct}%` }}></div>
+        </div>
+        <p className="text-[10px] font-bold text-white/80 text-right">{pct.toFixed(1)}% completado</p>
+      </div>
+    </div>
+  );
+};
+
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
@@ -156,18 +179,61 @@ const Dashboard = () => {
         <KpiCard
           title="Ahorro Total"
           value={`$${formatCOPFull(data?.savingsTotal ?? 0)}`}
-          sub="Categ. Ahorro"
+          sub="Balance Global"
           icon={ShieldCheck}
           gradient="bg-gradient-to-br from-violet-500 to-purple-800"
         />
         <KpiCard
-          title="Fondo Emergencia"
-          value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
-          sub="Histórico"
-          icon={ShieldCheck}
-          gradient="bg-gradient-to-br from-slate-700 to-slate-900"
+          title="Consumo Crédito Mes"
+          value={`$${formatCOPFull(data?.currentMonthCreditUsage ?? 0)}`}
+          sub="Diferidos en tarjeta"
+          icon={CardIcon}
+          gradient="bg-gradient-to-br from-orange-500 to-red-600"
         />
+        {data?.emergencyFundTarget > 0 ? (
+          <ProgressKpiCard
+            title="Fondo Emergencia"
+            current={data?.emergencyFundTotal ?? 0}
+            target={data?.emergencyFundTarget ?? 0}
+            icon={ShieldCheck}
+            gradient="bg-gradient-to-br from-slate-700 to-slate-900"
+          />
+        ) : (
+          <KpiCard
+            title="Fondo Emergencia"
+            value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
+            sub="Sin meta configurada"
+            icon={ShieldCheck}
+            gradient="bg-gradient-to-br from-slate-700 to-slate-900"
+          />
+        )}
       </div>
+
+      {/* Financial Insights Widget */}
+      {data?.financialInsight && (
+        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100/50 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-sm">
+          <div className="flex-shrink-0 relative">
+            <svg className="w-24 h-24 transform -rotate-90">
+                <circle cx="48" cy="48" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-indigo-200/50" />
+                <circle cx="48" cy="48" r="42" stroke="url(#gradient)" strokeWidth="8" fill="transparent" strokeDasharray={`${2 * Math.PI * 42}`} strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min((data.finScore ?? 0)/1000, 1))}`} className="drop-shadow-sm transition-all duration-1000" strokeLinecap="round" />
+                <defs>
+                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor="#818cf8" />
+                    <stop offset="100%" stopColor="#4f46e5" />
+                  </linearGradient>
+                </defs>
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-2xl font-black text-indigo-900 leading-none">{data.finScore ?? 0}</span>
+              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest leading-tight mt-0.5">Score</span>
+            </div>
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-bold text-indigo-900 mb-2 flex items-center gap-2"><TrendingUp size={18} className="text-indigo-600"/> Inteligencia Financiera</h3>
+            <p className="text-sm text-indigo-800/80 font-medium leading-relaxed max-w-3xl">{data.financialInsight}</p>
+          </div>
+        </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -60,34 +60,93 @@ export const createTransaction = async (req: any, res: Response) => {
         finalCategoryId = await categorizeByNLP(description, type);
       }
 
-      // 1. Create the transaction
+      // 1. Calculate Amortization Schedule if needed
+      let amortizationSchedule = null;
+      let isDeferred = false;
+      const parsedAmount = Number(amount);
+      const installmentsTotalNum = Number(req.body.installmentsTotal || 1);
+
+      if (cardId && type === 'expense') {
+        isDeferred = true; // Credit card expenses are liabilities, not instant cash drops
+        
+        if (installmentsTotalNum > 1 && req.body.installmentInterestRate !== undefined) {
+           const ratePct = Number(req.body.installmentInterestRate);
+           const r = ratePct / 100;
+           let monthlyPayment = parsedAmount / installmentsTotalNum;
+           
+           if (r > 0) {
+             monthlyPayment = (parsedAmount * r * Math.pow(1 + r, installmentsTotalNum)) / (Math.pow(1 + r, installmentsTotalNum) - 1);
+           }
+           
+           const schedule = [];
+           let remainingPrincipal = parsedAmount;
+           
+           for (let i = 1; i <= installmentsTotalNum; i++) {
+             const interest = remainingPrincipal * r;
+             const principal = monthlyPayment - interest;
+             remainingPrincipal -= principal;
+             
+             schedule.push({
+               installment: i,
+               payment: monthlyPayment,
+               capital: principal,
+               interest: interest,
+               balance: Math.max(0, remainingPrincipal) // Avoid negative precision errors
+             });
+           }
+           
+           amortizationSchedule = schedule;
+        }
+      }
+
+      // 2. Create the transaction
       const transaction = await tx.transaction.create({
         data: {
           userId: req.user.id,
           type,
-          amount,
-          currency: 'COP', // simplify for MVP
+          amount: parsedAmount,
+          currency: 'COP', 
           categoryId: finalCategoryId || null,
           accountId: accountId || null,
           cardId: cardId || null,
           goalId: req.body.goalId || null,
           description,
           transactionDate: new Date(transactionDate),
+          isDeferred,
+          installmentsTotal: installmentsTotalNum,
+          installmentInterestRate: req.body.installmentInterestRate ? Number(req.body.installmentInterestRate) : null,
+          installmentCurrent: installmentsTotalNum > 1 ? 1 : 1,
+          amortizationSchedule: amortizationSchedule || undefined
         },
         include: { category: true, account: true, creditCard: true }
       });
 
-      // 2. Update Account, Card or Goal Balance
-      if (accountId) {
+      // 3. Update Account, Card or Goal Balance
+      if (type === 'savings') {
+        // Savings logic: deduct from account (real cash moves to "savings pool")
+        // and optionally allocate to a specific pocket (goal)
+        if (accountId) {
+          await tx.account.update({
+            where: { id: accountId },
+            data: { currentBalance: { decrement: parsedAmount } }
+          });
+        }
+        if (req.body.goalId) {
+          await tx.goal.update({
+            where: { id: req.body.goalId },
+            data: { currentAmount: { increment: parsedAmount } }
+          });
+        }
+      } else if (accountId) {
         if (type === 'income') {
           await tx.account.update({
             where: { id: accountId },
-            data: { currentBalance: { increment: amount } }
+            data: { currentBalance: { increment: parsedAmount } }
           });
         } else if (type === 'expense') {
           await tx.account.update({
             where: { id: accountId },
-            data: { currentBalance: { decrement: amount } }
+            data: { currentBalance: { decrement: parsedAmount } }
           });
         }
       } else if (cardId) {
@@ -95,31 +154,18 @@ export const createTransaction = async (req: any, res: Response) => {
           // Expense on a credit card increases the balance (debt)
           await tx.creditCard.update({
             where: { id: cardId },
-            data: { currentBalance: { increment: amount } }
+            data: { currentBalance: { increment: parsedAmount } }
           });
         } else if (type === 'income') {
           // Income on a credit card decreases the balance (payment)
           await tx.creditCard.update({
             where: { id: cardId },
-            data: { currentBalance: { decrement: amount } }
-          });
-        }
-      } else if (req.body.goalId) {
-        // Expense/Income routing from/to a pocket
-        if (type === 'expense') {
-          await tx.goal.update({
-            where: { id: req.body.goalId },
-            data: { currentAmount: { decrement: amount } }
-          });
-        } else if (type === 'income') {
-          await tx.goal.update({
-            where: { id: req.body.goalId },
-            data: { currentAmount: { increment: amount } }
+            data: { currentBalance: { decrement: parsedAmount } }
           });
         }
       }
 
-      // 3. Outlier / Anomaly Detection
+      // 4. Outlier / Anomaly Detection
       if (type === 'expense' && finalCategoryId) {
         const pastExpenses = await tx.transaction.findMany({
           where: { userId: req.user.id, type: 'expense', categoryId: finalCategoryId }
@@ -164,7 +210,20 @@ export const deleteTransaction = async (req: any, res: Response) => {
       if (!transaction) throw new Error('Transaction not found');
 
       // 2. Revert the balance
-      if (transaction.accountId) {
+      if (transaction.type === 'savings') {
+         if (transaction.accountId) {
+           await tx.account.update({
+             where: { id: transaction.accountId },
+             data: { currentBalance: { increment: transaction.amount } }
+           });
+         }
+         if (transaction.goalId) {
+           await tx.goal.update({
+             where: { id: transaction.goalId },
+             data: { currentAmount: { decrement: transaction.amount } }
+           });
+         }
+      } else if (transaction.accountId) {
         if (transaction.type === 'income') {
           await tx.account.update({
             where: { id: transaction.accountId },
@@ -178,28 +237,16 @@ export const deleteTransaction = async (req: any, res: Response) => {
         }
       } else if (transaction.cardId) {
         if (transaction.type === 'expense') {
-          // Reverting an expense on a card decreases the balance
+          // Reverting an expense on a card decreases the liability
           await tx.creditCard.update({
             where: { id: transaction.cardId },
             data: { currentBalance: { decrement: transaction.amount } }
           });
         } else if (transaction.type === 'income') {
-          // Reverting an income (payment) on a card increases the balance
+          // Reverting an income (payment) on a card increases the liability back
           await tx.creditCard.update({
             where: { id: transaction.cardId },
             data: { currentBalance: { increment: transaction.amount } }
-          });
-        }
-      } else if (transaction.goalId) {
-        if (transaction.type === 'expense') {
-          await tx.goal.update({
-            where: { id: transaction.goalId },
-            data: { currentAmount: { increment: transaction.amount } }
-          });
-        } else if (transaction.type === 'income') {
-          await tx.goal.update({
-            where: { id: transaction.goalId },
-            data: { currentAmount: { decrement: transaction.amount } }
           });
         }
       }
@@ -269,6 +316,120 @@ export const payCreditCard = async (req: any, res: Response) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Server error processing credit card payment' });
+  }
+};
+
+export const extraordinaryPayment = async (req: any, res: Response) => {
+  try {
+    const { transactionId, extraAmount, preference } = req.body;
+    const userId = req.user.id;
+
+    if (!transactionId || !extraAmount || extraAmount <= 0 || !preference) {
+      return res.status(400).json({ error: 'Valid transactionId, extraAmount, and preference required' });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const transaction = await tx.transaction.findUnique({
+        where: { id: transactionId, userId }
+      });
+
+      if (!transaction || !transaction.isDeferred || !transaction.amortizationSchedule) {
+        throw new Error('Transaction invalid for extraordinary payment');
+      }
+
+      const schedule: any = transaction.amortizationSchedule;
+      const currentInstallment = transaction.installmentCurrent;
+      
+      // We will look for the outstanding principal balance right before this payment
+      // Simply: grab the balance of the previous installment, or initial amount if it's the 1st
+      let remainingPrincipal = Number(transaction.amount);
+      if (currentInstallment > 1 && currentInstallment - 2 < schedule.length) {
+         remainingPrincipal = Number(schedule[currentInstallment - 2].balance);
+      }
+      
+      // Apply extra payment directly to principal
+      remainingPrincipal -= Number(extraAmount);
+
+      if (remainingPrincipal <= 0) {
+        // Debt fully paid
+        await tx.transaction.update({
+           where: { id: transactionId },
+           data: { 
+             installmentsTotal: currentInstallment, 
+             amortizationSchedule: schedule.slice(0, currentInstallment - 1) 
+           }
+        });
+        return { message: 'Debt fully paid' };
+      }
+
+      // Recalculate based on preference
+      const ratePct = Number(transaction.installmentInterestRate || 0);
+      const r = ratePct / 100;
+      let newSchedule = schedule.slice(0, currentInstallment - 1);
+      
+      if (preference === 'reduce_payment') {
+        const remainingInstallments = transaction.installmentsTotal - currentInstallment + 1;
+        let pmt = remainingPrincipal / remainingInstallments;
+        if (r > 0) {
+          pmt = (remainingPrincipal * r * Math.pow(1 + r, remainingInstallments)) / (Math.pow(1 + r, remainingInstallments) - 1);
+        }
+        
+        let bal = remainingPrincipal;
+        for (let i = currentInstallment; i <= transaction.installmentsTotal; i++) {
+          const interest = bal * r;
+          const cap = pmt - interest;
+          bal -= cap;
+          newSchedule.push({
+            installment: i,
+            payment: pmt,
+            capital: cap,
+            interest,
+            balance: Math.max(0, bal)
+          });
+        }
+      } else if (preference === 'reduce_installments') {
+         // Keep the same payment amount, decrease number of installments
+         const pmt = Number(schedule[0].payment);
+         let bal = remainingPrincipal;
+         let i = currentInstallment;
+         
+         while (bal > 0) {
+           const interest = bal * r;
+           let cap = pmt - interest;
+           
+           if (cap >= bal) {
+             cap = bal;
+             bal = 0;
+           } else {
+             bal -= cap;
+           }
+           
+           newSchedule.push({
+             installment: i,
+             payment: cap + interest,
+             capital: cap,
+             interest,
+             balance: Math.max(0, bal)
+           });
+           i++;
+         }
+      }
+
+      const updatedTransaction = await tx.transaction.update({
+        where: { id: transactionId },
+        data: {
+          installmentsTotal: newSchedule.length,
+          amortizationSchedule: newSchedule
+        }
+      });
+      
+      return updatedTransaction;
+    });
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Server error processing extraordinary payment' });
   }
 };
 

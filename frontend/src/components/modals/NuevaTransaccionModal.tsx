@@ -9,11 +9,12 @@ import { X, CreditCard as CardIcon, Wallet, Calculator } from 'lucide-react';
 
 const schema = z.object({
   amount: z.number().positive('El monto debe ser mayor a 0'),
-  type: z.enum(['income', 'expense', 'transfer']),
+  type: z.enum(['income', 'expense', 'transfer', 'savings']),
   description: z.string().optional(),
   accountId: z.string().optional(),
   cardId: z.string().optional(),
   categoryId: z.string().optional(),
+  goalId: z.string().optional(),
   transactionDate: z.string().min(1, 'La fecha es requerida'),
   isRecurring: z.boolean().optional(),
   frequency: z.enum(['monthly', 'weekly', 'yearly']).optional(),
@@ -65,6 +66,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   // CC Installment state
   const [installments, setInstallments] = useState(1);
   const [interestRate, setInterestRate] = useState(0);
+  const [showAmortizationTable, setShowAmortizationTable] = useState(false);
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],
@@ -79,6 +81,11 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => (await api.get('/categories')).data,
+  });
+
+  const { data: goals } = useQuery({
+    queryKey: ['goals'],
+    queryFn: async () => (await api.get('/goals')).data,
   });
 
   const { register, handleSubmit, control, formState: { errors, isSubmitting }, watch } = useForm<FormData>({
@@ -106,6 +113,28 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   );
   const totalCost = monthlyPayment * installments;
   const totalInterest = totalCost - currentAmount;
+  
+  const amortizationSchedule = useMemo(() => {
+    if (installments <= 1) return [];
+    const r = interestRate / 100;
+    const schedule = [];
+    let remainingPrincipal = currentAmount;
+    
+    for (let i = 1; i <= installments; i++) {
+       const interest = remainingPrincipal * r;
+       const principal = monthlyPayment - interest;
+       remainingPrincipal -= principal;
+       
+       schedule.push({
+         installment: i,
+         payment: monthlyPayment,
+         capital: principal,
+         interest: interest,
+         balance: Math.max(0, remainingPrincipal)
+       });
+    }
+    return schedule;
+  }, [currentAmount, interestRate, installments, monthlyPayment]);
 
   const filteredCategories = categories?.filter((cat: any) => {
     if (selectedType === 'transfer') return cat.type === 'transfer';
@@ -122,6 +151,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
           categoryId: data.categoryId && data.categoryId !== '' ? data.categoryId : null,
           accountId: data.accountId && data.accountId !== '' ? data.accountId : null,
           cardId: data.cardId && data.cardId !== '' ? data.cardId : null,
+          goalId: data.goalId && data.goalId !== '' ? data.goalId : null,
           description: data.description || '',
           frequency: data.frequency || 'monthly',
           dayOfMonth: data.dayOfMonth || new Date().getDate(),
@@ -134,6 +164,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
         categoryId: data.categoryId && data.categoryId !== '' ? data.categoryId : null,
         accountId: data.accountId && data.accountId !== '' ? data.accountId : null,
         cardId: data.cardId && data.cardId !== '' ? data.cardId : null,
+        goalId: data.goalId && data.goalId !== '' ? data.goalId : null,
       };
 
       // Add installment data if paying with card
@@ -203,16 +234,30 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
               {errors.amount && <p className="mt-1 text-xs text-red-600">{errors.amount.message}</p>}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
-              <select
-                {...register('type')}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
-              >
-                <option value="expense">Gasto</option>
-                <option value="income">Ingreso</option>
-                <option value="transfer">Transferencia</option>
-              </select>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de transacción</label>
+              <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                {['expense', 'income', 'savings', 'transfer'].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      register('type').onChange({ target: { value: t } });
+                      if (t === 'savings') {
+                        setSourceType('account');
+                        register('cardId').onChange({ target: { value: '' } });
+                      }
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                      selectedType === t 
+                        ? 'bg-white text-slate-900 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {t === 'expense' ? 'Gasto' : t === 'income' ? 'Ingreso' : t === 'savings' ? 'Ahorro' : 'Transferencia'}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -228,13 +273,15 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                 >
                   <Wallet size={12} /> Cuenta
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { setSourceType('card'); register('accountId').onChange({ target: { value: '' } }); }}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'card' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  <CardIcon size={12} /> Tarjeta
-                </button>
+                {selectedType !== 'savings' && (
+                  <button
+                    type="button"
+                    onClick={() => { setSourceType('card'); register('accountId').onChange({ target: { value: '' } }); }}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'card' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    <CardIcon size={12} /> Tarjeta
+                  </button>
+                )}
               </div>
             </div>
             
@@ -265,6 +312,27 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
             )}
             {errors.accountId && <p className="mt-1 text-xs text-red-600">{errors.accountId.message}</p>}
           </div>
+
+          {/* Pocket (Goal) selector for savings */}
+          {selectedType === 'savings' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Bolsillo de Ahorro
+                <span className="ml-1 text-xs text-slate-400 font-normal">(opcional)</span>
+              </label>
+              <select
+                {...register('goalId')}
+                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
+              >
+                <option value="">— Enviar al balance global de ahorro —</option>
+                {goals?.map((goal: any) => (
+                  <option key={goal.id} value={goal.id}>
+                    {goal.icon} {goal.name} (faltan {fmtCOP(Math.max(0, goal.targetAmount - goal.currentAmount))})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* CC Installments Panel — shown only when card + expense */}
           {showInstallments && (
@@ -316,6 +384,43 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                     <p className="text-slate-400 mb-1">Total intereses</p>
                     <p className="font-bold text-amber-600">{fmtCOP(totalInterest)}</p>
                   </div>
+                </div>
+              )}
+              {installments > 1 && currentAmount > 0 && interestRate > 0 && (
+                <div className="mt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAmortizationTable(!showAmortizationTable)}
+                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                  >
+                    {showAmortizationTable ? 'Ocultar tabla de amortización' : 'Ver tabla de amortización'}
+                  </button>
+                  {showAmortizationTable && (
+                    <div className="mt-2 bg-white rounded-lg border border-indigo-100 overflow-hidden max-h-48 overflow-y-auto w-full">
+                       <table className="w-full text-left text-[10px] whitespace-nowrap">
+                         <thead className="bg-slate-50 text-slate-500 border-b border-indigo-50">
+                           <tr>
+                             <th className="px-2 py-1.5">No.</th>
+                             <th className="px-2 py-1.5 text-right">Cuota</th>
+                             <th className="px-2 py-1.5 text-right">Capital</th>
+                             <th className="px-2 py-1.5 text-right">Interés</th>
+                             <th className="px-2 py-1.5 text-right">Saldo</th>
+                           </tr>
+                         </thead>
+                         <tbody className="divide-y divide-indigo-50/50">
+                           {amortizationSchedule.map(row => (
+                             <tr key={row.installment}>
+                               <td className="px-2 py-1.5 text-slate-500">{row.installment}</td>
+                               <td className="px-2 py-1.5 text-right font-medium text-slate-700">{fmtCOP(row.payment)}</td>
+                               <td className="px-2 py-1.5 text-right text-emerald-600">{fmtCOP(row.capital)}</td>
+                               <td className="px-2 py-1.5 text-right text-amber-600">{fmtCOP(row.interest)}</td>
+                               <td className="px-2 py-1.5 text-right font-semibold text-slate-700">{fmtCOP(row.balance)}</td>
+                             </tr>
+                           ))}
+                         </tbody>
+                       </table>
+                    </div>
+                  )}
                 </div>
               )}
               {installments === 1 && (

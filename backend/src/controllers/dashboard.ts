@@ -30,18 +30,25 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     let currentMonthExpense = 0;
     const expenseByCategory: Record<string, number> = {};
 
+    let currentMonthCreditUsage = 0;
+    let currentMonthSavings = 0;
+
     monthlyTransactions.forEach((t: any) => {
       const amount = Number(t.amount);
       if (t.type === 'income') {
         currentMonthIncome += amount;
-      } else if (t.type === 'expense') {
+      } else if (t.type === 'expense' && !t.isDeferred) {
         currentMonthExpense += amount;
         const catName: string = t.category?.name || 'Sin categoría';
         expenseByCategory[catName] = (expenseByCategory[catName] || 0) + amount;
+      } else if (t.type === 'expense' && t.isDeferred) {
+        currentMonthCreditUsage += amount;
+      } else if (t.type === 'savings') {
+        currentMonthSavings += amount;
       }
     });
 
-    const netSavings = currentMonthIncome - currentMonthExpense;
+    const netSavings = currentMonthIncome - currentMonthExpense - currentMonthSavings;
 
     const expensesDistribution = Object.keys(expenseByCategory)
       .map((key) => ({ name: key, value: expenseByCategory[key] }))
@@ -152,11 +159,11 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     const burnRate = totalHistoricalExpenses / daysSinceThreeMonthsAgo;
     const runwayDays = burnRate > 0 ? Math.round(totalBalance / burnRate) : 999;
 
-    // === KPI: TASA DE ESFUERZO (EFFORT RATE) ===
+    // === KPI: TASA DE ESFUERZO (EFFORT RATE) & FINANCIAL INSIGHT ===
     let currentMonthDebtPayments = 0;
     monthlyTransactions.forEach((t: any) => {
       const amount = Number(t.amount);
-      if (t.type === 'expense') {
+      if (t.type === 'expense' && !t.isDeferred) {
         const catName: string = (t.category?.name || '').toLowerCase();
         if (catName.includes('hipoteca') || catName.includes('tarjeta') || catName.includes('crédito') || catName.includes('prestamo') || catName.includes('préstamo') || catName.includes('deuda') || t.cardId) {
           currentMonthDebtPayments += amount;
@@ -164,6 +171,15 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       }
     });
     const effortRate = currentMonthIncome > 0 ? (currentMonthDebtPayments / currentMonthIncome) * 100 : 0;
+    
+    let financialInsight = "";
+    if (effortRate < 20) {
+      financialInsight = "Tu nivel de endeudamiento es saludable. ¡Excelente manejo!";
+    } else if (effortRate <= 35) {
+      financialInsight = `Tu nivel de endeudamiento es del ${Math.round(effortRate)}%. Considera no diferir compras a más de 1 cuota este mes.`;
+    } else {
+      financialInsight = `¡Atención! Tu capacidad de pago está comprometida (${Math.round(effortRate)}% de tus ingresos). Evita nuevas deudas.`;
+    }
 
     // === SMART PRO: BALANCE PREDICTION (Linear Regression) ===
     // Find transactions in the last 30 days to build a running balance
@@ -229,6 +245,9 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       burnRate,
       runwayDays,
       effortRate,
+      financialInsight,
+      currentMonthCreditUsage,
+      currentMonthSavings,
       predictedEndOfWeekBalance,
       predictedEndOfMonthBalance,
       optimizationInsight,

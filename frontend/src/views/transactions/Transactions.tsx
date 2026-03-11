@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
-import { Trash2, Pause, Play } from 'lucide-react';
+import { Trash2, Pause, Play, Zap } from 'lucide-react';
 import NuevaTransaccionModal from '../../components/modals/NuevaTransaccionModal';
 
 const Transactions = () => {
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'history' | 'recurring'>('history');
+  
+  // Extra Payment State
+  const [extraPaymentTx, setExtraPaymentTx] = useState<any>(null);
+  const [extraAmount, setExtraAmount] = useState('');
+  const [preference, setPreference] = useState<'reduce_installments' | 'reduce_payment'>('reduce_installments');
 
   const { data: transactions, isLoading: isLoadingTx } = useQuery({
     queryKey: ['transactions'],
@@ -58,6 +63,22 @@ const Transactions = () => {
     }
   });
 
+  const extraPaymentMutation = useMutation({
+    mutationFn: (data: any) => api.post('/transactions/extraordinary-payment', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      queryClient.invalidateQueries({ queryKey: ['cards'] });
+      setExtraPaymentTx(null);
+      setExtraAmount('');
+      alert('Abono procesado exitosamente.');
+    },
+    onError: (err: any) => {
+      alert(err.response?.data?.error || 'Error al procesar el abono');
+    }
+  });
+
   const handleDelete = (id: string) => {
     if (window.confirm('¿Estás seguro de que deseas eliminar esta transacción? Esta acción revertirá el saldo correspondiente y no se puede deshacer.')) {
       deleteMutation.mutate(id);
@@ -72,6 +93,16 @@ const Transactions = () => {
 
   const handleToggleRecurring = (id: string, currentStatus: boolean) => {
       toggleRecurringMutation.mutate({ id, isActive: !currentStatus });
+  };
+
+  const handleExtraPayment = () => {
+    if (extraPaymentTx && Number(extraAmount) > 0) {
+      extraPaymentMutation.mutate({
+        transactionId: extraPaymentTx.id,
+        extraAmount: Number(extraAmount),
+        preference
+      });
+    }
   };
 
   if (isLoadingTx || isLoadingRec) return <div>Cargando...</div>;
@@ -135,8 +166,13 @@ const Transactions = () => {
                   <td className="px-6 py-4 text-slate-500 font-medium">
                     {new Date(t.transactionDate).toLocaleDateString('es-CO')}
                   </td>
-                  <td className="px-6 py-4 font-semibold text-slate-800 group-hover:text-slate-900 transition-colors">
+                  <td className="px-6 py-4 font-semibold text-slate-800 group-hover:text-slate-900 transition-colors flex items-center gap-2">
                     {t.description || '-'}
+                    {t.isDeferred && t.installmentsTotal > 1 && (
+                      <span className="text-[10px] font-bold tracking-wider text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full uppercase">
+                        {t.installmentsTotal} Cuotas
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200/60">
@@ -150,6 +186,15 @@ const Transactions = () => {
                     {t.type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </td>
                   <td className="px-6 py-4 text-center">
+                    {t.isDeferred && t.installmentsTotal > 1 && (
+                      <button 
+                        onClick={() => setExtraPaymentTx(t)}
+                        className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors mr-1"
+                        title="Realizar Abono Extraordinario"
+                      >
+                        <Zap size={16} />
+                      </button>
+                    )}
                     <button 
                       onClick={() => handleDelete(t.id)}
                       className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
@@ -245,6 +290,72 @@ const Transactions = () => {
           )}
         </div>
       </div>
+
+      {/* Extra Payment Modal */}
+      {extraPaymentTx && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-7 space-y-6">
+             {/* Header */}
+             <div className="flex items-center gap-4 border-b border-slate-100 pb-5">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Zap size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900 leading-tight">Abono Extraordinario</h3>
+                  <p className="text-sm font-semibold text-slate-500 leading-tight mt-1">{extraPaymentTx.description}</p>
+                </div>
+             </div>
+             
+             {/* Form */}
+             <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Monto a abonar (COP)</label>
+                  <input
+                    type="number"
+                    value={extraAmount}
+                    onChange={e => setExtraAmount(e.target.value)}
+                    placeholder="Ej: 500000"
+                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-base font-semibold text-slate-800 focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    autoFocus
+                  />
+                  <p className="text-xs font-semibold text-slate-500 mt-2">
+                    Deuda calculada act: <span className="text-indigo-600">{Number(extraPaymentTx.amount).toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })}</span>
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Preferencia de ajuste</label>
+                  <div className="flex bg-slate-100 p-1 rounded-xl">
+                    <button
+                      onClick={() => setPreference('reduce_installments')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${preference === 'reduce_installments' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Reducir plazo (meses)
+                    </button>
+                    <button
+                      onClick={() => setPreference('reduce_payment')}
+                      className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${preference === 'reduce_payment' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Reducir cuota mensual
+                    </button>
+                  </div>
+                </div>
+             </div>
+
+             {/* Actions */}
+             <div className="flex gap-3 pt-2">
+               <button onClick={() => { setExtraPaymentTx(null); setExtraAmount(''); }} className="flex-1 py-3 border-2 border-slate-200 rounded-xl text-slate-600 text-sm font-bold hover:bg-slate-50 transition-colors">Cancelar</button>
+               <button
+                 onClick={handleExtraPayment}
+                 disabled={!extraAmount || Number(extraAmount) <= 0 || extraPaymentMutation.isPending}
+                 className="flex-1 py-3 bg-indigo-600 text-white rounded-xl text-sm font-black tracking-wide hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200 disabled:opacity-50 disabled:shadow-none"
+               >
+                 {extraPaymentMutation.isPending ? 'Procesando...' : 'Aplicar Abono'}
+               </button>
+             </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
