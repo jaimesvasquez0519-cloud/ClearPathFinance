@@ -95,8 +95,8 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       finScore += 20; // Bonus for saving
       // Calculate savings ratio
       const savingsRatio = currentMonthIncome > 0 ? (netSavings / currentMonthIncome) : 0;
-      if (savingsRatio >= 0.2) finScore += 15; // +15 for saving 20%+
-      else if (savingsRatio >= 0.1) finScore += 10;
+      if (savingsRatio >= 0.2 && isFinite(savingsRatio)) finScore += 15; // +15 for saving 20%+
+      else if (savingsRatio >= 0.1 && isFinite(savingsRatio)) finScore += 10;
     } else if (netSavings < 0) {
       finScore -= 20; // Penalty for deficit
     }
@@ -144,10 +144,10 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     
     goals.forEach((g: any) => {
       if (g.type === 'emergency') {
-        emergencyFundTotal += Number(g.currentAmount);
-        emergencyFundTarget += Number(g.targetAmount);
+        emergencyFundTotal += Number(g.currentAmount || 0);
+        emergencyFundTarget += Number(g.targetAmount || 0);
       } else {
-        savingsTotal += Number(g.currentAmount);
+        savingsTotal += Number(g.currentAmount || 0);
       }
     });
 
@@ -157,7 +157,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
     const daysSinceThreeMonthsAgo = Math.max(1, Math.floor((now.getTime() - threeMonthsAgo.getTime()) / (1000 * 60 * 60 * 24)));
     const burnRate = totalHistoricalExpenses / daysSinceThreeMonthsAgo;
-    const runwayDays = burnRate > 0 ? Math.round(totalBalance / burnRate) : 999;
+    const runwayDays = (burnRate > 0 && isFinite(burnRate)) ? Math.round(totalBalance / burnRate) : 999;
 
     // === KPI: TASA DE ESFUERZO (EFFORT RATE) & FINANCIAL INSIGHT ===
     let currentMonthDebtPayments = 0;
@@ -198,8 +198,8 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     const currentDay = now.getDate();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const daysLeft = daysInMonth - currentDay;
-    const predictedEndOfWeekBalance = totalBalance + (dailyTrend * 7);
-    const predictedEndOfMonthBalance = totalBalance + (dailyTrend * daysLeft);
+    const predictedEndOfWeekBalance = isFinite(dailyTrend) ? totalBalance + (dailyTrend * 7) : totalBalance;
+    const predictedEndOfMonthBalance = isFinite(dailyTrend) ? totalBalance + (dailyTrend * daysLeft) : totalBalance;
 
     // === SMART PRO: EXPENSE OPTIMIZATION INSIGHT ===
     let optimizationInsight = "Tus gastos están bajo control este mes. ¡Sigue así!";
