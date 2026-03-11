@@ -264,7 +264,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
         .slice(0, 5),
     });
   } catch (error) {
-    console.error(error);
+    console.error('[DASHBOARD ERROR]', error);
     res.status(500).json({ error: 'Server error fetching dashboard' });
   }
 };
