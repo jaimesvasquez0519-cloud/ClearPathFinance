@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
-import { X, CreditCard as CardIcon, Wallet, Calculator } from 'lucide-react';
+import { X, CreditCard as CardIcon, Wallet, Calculator, AlertTriangle } from 'lucide-react';
 
 const schema = z.object({
   amount: z.number().positive('El monto debe ser mayor a 0'),
@@ -101,7 +101,16 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
 
   const selectedType = useWatch({ control, name: 'type', defaultValue: 'expense' });
   const isRecurring = watch('isRecurring');
+  const selectedCardId = useWatch({ control, name: 'cardId' });
   const currentAmount = parseCOP(amountDisplay);
+
+  // Credit card utilization for selected card
+  const selectedCard = useMemo(() => cards?.find((c: any) => c.id === selectedCardId), [cards, selectedCardId]);
+  const cardUsed = Number(selectedCard?.currentBalance || 0);
+  const cardLimit = Number(selectedCard?.creditLimit || 0);
+  const cardUsedAfter = cardUsed + currentAmount;
+  const cardUtilAfterPct = cardLimit > 0 ? (cardUsedAfter / cardLimit) * 100 : 0;
+  const isOverLimit = cardLimit > 0 && cardUsedAfter > cardLimit;
 
   // Show installment pane only when paying with card and it's an expense
   const showInstallments = sourceType === 'card' && selectedType === 'expense';
@@ -298,6 +307,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                 ))}
               </select>
             ) : (
+              <>
               <select
                 {...register('cardId')}
                 className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
@@ -306,9 +316,39 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                 {cards?.map((card: any) => (
                   <option key={card.id} value={card.id}>
                     {card.bankName} - {card.cardNetwork} (•••• {card.lastFourDigits || card.id.slice(0, 4)})
+                    {card.creditLimit > 0 ? ` — Cupo: ${fmtCOP(card.creditLimit - card.currentBalance)}` : ''}
                   </option>
                 ))}
               </select>
+              {/* Credit Limit Usage Bar */}
+              {selectedCard && cardLimit > 0 && (
+                <div className={`mt-2 p-3 rounded-xl border ${isOverLimit ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className={`font-semibold ${isOverLimit ? 'text-red-700' : 'text-slate-600'}`}>
+                      {isOverLimit ? '🚨 Cupo insuficiente' : 'Uso del cupo'}
+                    </span>
+                    <span className={`font-bold ${cardUtilAfterPct > 80 ? 'text-red-600' : 'text-slate-700'}`}>
+                      {fmtCOP(cardUsedAfter)} / {fmtCOP(cardLimit)}
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div className="h-2 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${Math.min(100, cardUtilAfterPct)}%`,
+                        background: cardUtilAfterPct > 90 ? '#ef4444' : cardUtilAfterPct > 70 ? '#f59e0b' : '#10b981'
+                      }} />
+                  </div>
+                  {isOverLimit && (
+                    <div className="flex items-center gap-1.5 mt-2">
+                      <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                      <p className="text-xs font-bold text-red-700">
+                        Solo tienes {fmtCOP(Math.max(0, cardLimit - cardUsed))} disponibles. No puedes registrar este gasto.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              </>
             )}
             {errors.accountId && <p className="mt-1 text-xs text-red-600">{errors.accountId.message}</p>}
           </div>

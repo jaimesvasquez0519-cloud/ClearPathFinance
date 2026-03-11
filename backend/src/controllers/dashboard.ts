@@ -105,14 +105,26 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     if (monthlyTransactions.length > 5) finScore += 5;
     if (historical.length > 20) finScore += 10;
 
-    // Cap the score between 0 and 100
+    // Factor 3: Savings habit (own savings transactions)
+    if (currentMonthSavings > 0) finScore += 5;
+
+    // Factor 4: Cap the score between 0 and 100 (BEFORE credit card penalty)
     finScore = Math.max(0, Math.min(100, finScore));
 
     // === CREDIT CARDS ALERTS ===
     const creditCards = await prisma.creditCard.findMany({
       where: { userId },
-      select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true }
+      select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true, creditLimit: true, lastFourDigits: true }
     });
+
+    // === CREDIT CARD UTILIZATION (for finScore) ===
+    let totalCreditLimit = 0;
+    let totalCreditUsed = 0;
+    creditCards.forEach((card: any) => {
+      totalCreditLimit += Number(card.creditLimit || 0);
+      totalCreditUsed += Number(card.currentBalance || 0);
+    });
+    const creditUtilizationRate = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0;
 
     // === ALL-TIME CATEGORY EXPENSES ===
     const allTransactions = await prisma.transaction.findMany({
@@ -171,6 +183,16 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       }
     });
     const effortRate = currentMonthIncome > 0 ? (currentMonthDebtPayments / currentMonthIncome) * 100 : 0;
+
+    // === CREDIT UTILIZATION PENALTY on finScore ===
+    // Penalize if credit utilization > 30%
+    if (creditUtilizationRate > 80) finScore -= 20;
+    else if (creditUtilizationRate > 50) finScore -= 10;
+    else if (creditUtilizationRate > 30) finScore -= 5;
+    // Bonus for keeping utilization below 10%
+    if (creditUtilizationRate > 0 && creditUtilizationRate < 10) finScore += 5;
+    finScore = Math.max(0, Math.min(100, finScore));
+    // =============================================
     
     let financialInsight = "";
     if (effortRate < 20) {
@@ -246,6 +268,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       runwayDays,
       effortRate,
       financialInsight,
+      creditUtilizationRate: Math.round(creditUtilizationRate * 10) / 10,
       currentMonthCreditUsage,
       currentMonthSavings,
       predictedEndOfWeekBalance,

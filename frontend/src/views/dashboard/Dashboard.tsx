@@ -209,31 +209,133 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Financial Insights Widget */}
-      {data?.financialInsight && (
-        <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-100/50 rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-sm">
-          <div className="flex-shrink-0 relative">
-            <svg className="w-24 h-24 transform -rotate-90">
-                <circle cx="48" cy="48" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-indigo-200/50" />
-                <circle cx="48" cy="48" r="42" stroke="url(#gradient)" strokeWidth="8" fill="transparent" strokeDasharray={`${2 * Math.PI * 42}`} strokeDashoffset={`${2 * Math.PI * 42 * (1 - Math.min((data.finScore ?? 0)/1000, 1))}`} className="drop-shadow-sm transition-all duration-1000" strokeLinecap="round" />
+      {/* Financial Insights Widget — Dynamic */}
+      {(() => {
+        const score = data?.finScore ?? 0;
+        const utilRate = data?.creditUtilizationRate ?? 0;
+
+        // Determine tier
+        let tier: 'critical' | 'warning' | 'good' | 'excellent';
+        if (score < 50) tier = 'critical';
+        else if (score < 70) tier = 'warning';
+        else if (score < 90) tier = 'good';
+        else tier = 'excellent';
+
+        const tierConfig = {
+          critical: {
+            bg: 'bg-gradient-to-r from-red-50 to-rose-50 border-red-100/60',
+            ring: 'text-red-500',
+            text: 'text-red-900',
+            sub: 'text-red-700/80',
+            gradStart: '#ef4444', gradEnd: '#b91c1c',
+            emoji: '🚨',
+            label: 'Atención requerida',
+            labelColor: 'bg-red-100 text-red-700',
+            cta: { label: 'Ver mis deudas →', path: '#cards' },
+          },
+          warning: {
+            bg: 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-100/60',
+            ring: 'text-amber-500',
+            text: 'text-amber-900',
+            sub: 'text-amber-700/80',
+            gradStart: '#f59e0b', gradEnd: '#d97706',
+            emoji: '⚠️',
+            label: 'Puede mejorar',
+            labelColor: 'bg-amber-100 text-amber-700',
+            cta: { label: 'Crear plan de ahorro →', path: '#savings' },
+          },
+          good: {
+            bg: 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-100/60',
+            ring: 'text-emerald-500',
+            text: 'text-emerald-900',
+            sub: 'text-emerald-700/80',
+            gradStart: '#10b981', gradEnd: '#0d9488',
+            emoji: '✅',
+            label: 'Buen manejo',
+            labelColor: 'bg-emerald-100 text-emerald-700',
+            cta: { label: 'Aumentar mis ahorros →', path: '#savings' },
+          },
+          excellent: {
+            bg: 'bg-gradient-to-r from-indigo-50 to-blue-50 border-indigo-100/60',
+            ring: 'text-indigo-500',
+            text: 'text-indigo-900',
+            sub: 'text-indigo-700/80',
+            gradStart: '#818cf8', gradEnd: '#4f46e5',
+            emoji: '🏆',
+            label: 'Excelente',
+            labelColor: 'bg-indigo-100 text-indigo-700',
+            cta: { label: 'Ver mis metas →', path: '#savings' },
+          },
+        }[tier];
+
+        // Build contextual message
+        let message = data?.financialInsight || '';
+        if (utilRate > 70) message += ` Además, tu tarjeta de crédito está al ${utilRate}% de su cupo — considera hacer un pago pronto.`;
+        else if (utilRate > 30 && utilRate <= 70) message += ` Tu uso de tarjeta es del ${utilRate}%, lo cual es moderado.`;
+        else if (utilRate > 0 && utilRate <= 30) message += ` Tu uso de tarjeta es saludable (${utilRate}%).`;
+
+        if (tier === 'good' && data?.currentMonthSavings > 0) {
+          message = `¡Vas muy bien! Has ahorrado $${formatCOPFull(data?.currentMonthSavings)} este mes. ${message}`;
+        }
+
+        const circumference = 2 * Math.PI * 42;
+        const offset = circumference * (1 - score / 100);
+
+        return (
+          <div className={`rounded-3xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-sm border ${tierConfig.bg}`}>
+            {/* Score Dial */}
+            <div className="flex-shrink-0 relative">
+              <svg className="w-24 h-24 transform -rotate-90" viewBox="0 0 96 96">
+                <circle cx="48" cy="48" r="42" stroke="currentColor" strokeWidth="8" fill="transparent" className="opacity-20" style={{ color: tierConfig.gradStart }} />
+                <circle cx="48" cy="48" r="42" stroke={`url(#grad-${tier})`} strokeWidth="8" fill="transparent"
+                  strokeDasharray={circumference} strokeDashoffset={offset}
+                  className="drop-shadow-sm transition-all duration-1000" strokeLinecap="round" />
                 <defs>
-                  <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#818cf8" />
-                    <stop offset="100%" stopColor="#4f46e5" />
+                  <linearGradient id={`grad-${tier}`} x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="0%" stopColor={tierConfig.gradStart} />
+                    <stop offset="100%" stopColor={tierConfig.gradEnd} />
                   </linearGradient>
                 </defs>
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-2xl font-black text-indigo-900 leading-none">{data.finScore ?? 0}</span>
-              <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest leading-tight mt-0.5">Score</span>
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className={`text-2xl font-black leading-none ${tierConfig.text}`}>{score}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-widest leading-tight mt-0.5 ${tierConfig.ring}`}>Score</span>
+              </div>
             </div>
+
+            {/* Message Block */}
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-lg">{tierConfig.emoji}</span>
+                <h3 className={`text-base font-bold flex items-center gap-2 ${tierConfig.text}`}>
+                  Inteligencia Financiera
+                </h3>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${tierConfig.labelColor}`}>{tierConfig.label}</span>
+              </div>
+              <p className={`text-sm font-medium leading-relaxed max-w-3xl ${tierConfig.sub}`}>{message}</p>
+              {utilRate > 0 && (
+                <div className="mt-3 flex items-center gap-3">
+                  <span className={`text-xs font-bold ${tierConfig.sub}`}>Uso de tarjeta</span>
+                  <div className="flex-1 bg-black/10 rounded-full h-1.5 overflow-hidden max-w-[160px]">
+                    <div className="h-1.5 rounded-full transition-all duration-700"
+                      style={{ width: `${Math.min(100, utilRate)}%`, background: utilRate > 70 ? '#ef4444' : utilRate > 30 ? '#f59e0b' : '#10b981' }} />
+                  </div>
+                  <span className={`text-xs font-black ${tierConfig.text}`}>{utilRate}%</span>
+                </div>
+              )}
+            </div>
+
+            {/* CTA */}
+            <a href={tierConfig.cta.path}
+              onClick={e => { e.preventDefault(); document.getElementById(tier === 'critical' ? 'nav-cards' : 'nav-savings')?.click(); }}
+              className={`flex-shrink-0 px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm border border-black/5 hover:shadow-md hover:-translate-y-0.5 ${tierConfig.labelColor}`}
+            >
+              {tierConfig.cta.label}
+            </a>
           </div>
-          <div className="flex-1">
-            <h3 className="text-base font-bold text-indigo-900 mb-2 flex items-center gap-2"><TrendingUp size={18} className="text-indigo-600"/> Inteligencia Financiera</h3>
-            <p className="text-sm text-indigo-800/80 font-medium leading-relaxed max-w-3xl">{data.financialInsight}</p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
+
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

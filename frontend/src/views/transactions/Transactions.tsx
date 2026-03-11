@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
-import { Trash2, Pause, Play, Zap } from 'lucide-react';
+import { Trash2, Pause, Play, Zap, ChevronDown, ChevronUp, TableProperties } from 'lucide-react';
 import NuevaTransaccionModal from '../../components/modals/NuevaTransaccionModal';
+
+const fmtCOP = (n: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 
 const Transactions = () => {
   const queryClient = useQueryClient();
@@ -13,6 +15,7 @@ const Transactions = () => {
   const [extraPaymentTx, setExtraPaymentTx] = useState<any>(null);
   const [extraAmount, setExtraAmount] = useState('');
   const [preference, setPreference] = useState<'reduce_installments' | 'reduce_payment'>('reduce_installments');
+  const [expandedAmortizationId, setExpandedAmortizationId] = useState<string | null>(null);
 
   const { data: transactions, isLoading: isLoadingTx } = useQuery({
     queryKey: ['transactions'],
@@ -161,53 +164,127 @@ const Transactions = () => {
             <tbody className="divide-y divide-slate-100/80">
               {[...(transactions || [])]
                 .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                .map((t: any) => (
-                <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-6 py-4 text-slate-500 font-medium">
-                    {new Date(t.transactionDate).toLocaleDateString('es-CO')}
-                  </td>
-                  <td className="px-6 py-4 font-semibold text-slate-800 group-hover:text-slate-900 transition-colors flex items-center gap-2">
-                    {t.description || '-'}
-                    {t.isDeferred && t.installmentsTotal > 1 && (
-                      <span className="text-[10px] font-bold tracking-wider text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full uppercase">
-                        {t.installmentsTotal} Cuotas
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200/60">
-                      {t.category?.name || 'Sin categoría'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-slate-500 font-medium whitespace-break-spaces">
-                    {t.account ? t.account.bankName : t.creditCard ? `${t.creditCard.bankName} (••••${t.creditCard.lastFourDigits || t.creditCard.id.slice(0,4)})` : 'Desconocida'}
-                  </td>
-                  <td className={`px-6 py-4 text-right font-bold tracking-tight ${t.type === 'income' ? 'text-slate-900' : 'text-slate-500'}`}>
-                    {t.type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {t.isDeferred && t.installmentsTotal > 1 && (
-                      <button 
-                        onClick={() => setExtraPaymentTx(t)}
-                        className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors mr-1"
-                        title="Realizar Abono Extraordinario"
-                      >
-                        <Zap size={16} />
-                      </button>
-                    )}
-                    <button 
-                      onClick={() => handleDelete(t.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Eliminar Transacción"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                .map((t: any) => {
+                  const hasAmortization = t.isDeferred && t.installmentsTotal > 1 && Array.isArray(t.amortizationSchedule) && t.amortizationSchedule.length > 0;
+                  const isExpanded = expandedAmortizationId === t.id;
+                  return (
+                    <>
+                      <tr key={t.id} className="hover:bg-slate-50/50 transition-colors group">
+                        <td className="px-6 py-4 text-slate-500 font-medium">
+                          {new Date(t.transactionDate).toLocaleDateString('es-CO')}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-slate-800 group-hover:text-slate-900 transition-colors">
+                          <div className="flex items-center gap-2">
+                            {t.description || '-'}
+                            {hasAmortization && (
+                              <span className="text-[10px] font-bold tracking-wider text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full uppercase">
+                                {t.installmentsTotal} Cuotas
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200/60">
+                            {t.category?.name || 'Sin categoría'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-500 font-medium whitespace-break-spaces">
+                          {t.account ? t.account.bankName : t.creditCard ? `${t.creditCard.bankName} (••••${t.creditCard.lastFourDigits || t.creditCard.id.slice(0,4)})` : 'Desconocida'}
+                        </td>
+                        <td className={`px-6 py-4 text-right font-bold tracking-tight ${t.type === 'income' ? 'text-emerald-600' : t.isDeferred ? 'text-indigo-600' : 'text-slate-500'}`}>
+                          {t.type === 'income' ? '+' : '-'}${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          {hasAmortization && (
+                            <>
+                              <button
+                                onClick={() => setExpandedAmortizationId(isExpanded ? null : t.id)}
+                                className="p-1.5 text-violet-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg transition-colors mr-1"
+                                title="Ver proyección de cuotas"
+                              >
+                                <TableProperties size={16} />
+                                {isExpanded ? <ChevronUp size={10} className="inline" /> : <ChevronDown size={10} className="inline" />}
+                              </button>
+                              <button 
+                                onClick={() => setExtraPaymentTx(t)}
+                                className="p-1.5 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors mr-1"
+                                title="Abono Extraordinario"
+                              >
+                                <Zap size={16} />
+                              </button>
+                            </>
+                          )}
+                          <button 
+                            onClick={() => handleDelete(t.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Eliminar Transacción"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                      {/* AMORTIZATION TABLE EXPANDED ROW */}
+                      {hasAmortization && isExpanded && (
+                        <tr key={`amort-${t.id}`} className="bg-indigo-50/40">
+                          <td colSpan={6} className="px-6 py-4">
+                            <div className="text-xs font-bold text-indigo-700 mb-3 flex items-center gap-2">
+                              <TableProperties size={14} />
+                              Proyección de Cuotas — {t.description}
+                              <span className="ml-auto font-medium text-indigo-500">Tasa: {t.installmentInterestRate || 0}% mensual</span>
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-indigo-200/60">
+                              <table className="w-full text-xs">
+                                <thead className="bg-indigo-100/60">
+                                  <tr>
+                                    <th className="px-3 py-2 text-left font-bold text-indigo-700">#</th>
+                                    <th className="px-3 py-2 text-right font-bold text-indigo-700">Cuota Total</th>
+                                    <th className="px-3 py-2 text-right font-bold text-indigo-700">Abono Capital</th>
+                                    <th className="px-3 py-2 text-right font-bold text-indigo-700">Intereses</th>
+                                    <th className="px-3 py-2 text-right font-bold text-indigo-700">Saldo</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-indigo-100/60">
+                                  {(t.amortizationSchedule as any[]).map((row: any, idx: number) => {
+                                    const isPast = row.installment < (t.installmentCurrent || 1);
+                                    return (
+                                      <tr key={idx} className={`${isPast ? 'opacity-40 line-through' : ''} hover:bg-indigo-50 transition-colors`}>
+                                        <td className="px-3 py-2 font-bold text-indigo-600">{row.installment}</td>
+                                        <td className="px-3 py-2 text-right font-semibold text-slate-700">{fmtCOP(Number(row.payment))}</td>
+                                        <td className="px-3 py-2 text-right text-slate-600">{fmtCOP(Number(row.capital))}</td>
+                                        <td className="px-3 py-2 text-right text-rose-600 font-medium">{fmtCOP(Number(row.interest))}</td>
+                                        <td className="px-3 py-2 text-right font-bold text-slate-800">{fmtCOP(Number(row.balance))}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                                <tfoot className="bg-indigo-100/40 border-t border-indigo-200/60">
+                                  <tr>
+                                    <td colSpan={2} className="px-3 py-2 font-bold text-indigo-800">Total a pagar</td>
+                                    <td className="px-3 py-2 text-right font-bold text-slate-700">{fmtCOP((t.amortizationSchedule as any[]).reduce((s: number, r: any) => s + Number(r.capital), 0))}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-rose-600">{fmtCOP((t.amortizationSchedule as any[]).reduce((s: number, r: any) => s + Number(r.interest), 0))}</td>
+                                    <td className="px-3 py-2 text-right font-bold text-indigo-900">{fmtCOP((t.amortizationSchedule as any[]).reduce((s: number, r: any) => s + Number(r.payment), 0))}</td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            </div>
+                            <div className="mt-3">
+                              <button
+                                onClick={() => setExtraPaymentTx(t)}
+                                className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 bg-indigo-100 hover:bg-indigo-200 px-3 py-1.5 rounded-lg transition-colors"
+                              >
+                                <Zap size={12} />
+                                Realizar Abono Extraordinario y Recalcular
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
               {transactions?.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
+                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic">
                     No hay transacciones registradas.
                   </td>
                 </tr>

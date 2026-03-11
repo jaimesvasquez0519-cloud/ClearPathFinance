@@ -68,6 +68,19 @@ export const createTransaction = async (req: any, res: Response) => {
 
       if (cardId && type === 'expense') {
         isDeferred = true; // Credit card expenses are liabilities, not instant cash drops
+
+        // === CREDIT LIMIT VALIDATION ===
+        const card = await tx.creditCard.findUnique({ where: { id: cardId, userId: req.user.id } });
+        if (!card) throw new Error('Credit card not found');
+        
+        const newBalance = Number(card.currentBalance) + parsedAmount;
+        const limit = Number(card.creditLimit);
+        
+        if (limit > 0 && newBalance > limit) {
+          const available = limit - Number(card.currentBalance);
+          throw Object.assign(new Error(`Cupo insuficiente. Disponible: $${available.toLocaleString('es-CO')}. Esta tarjeta sólo tiene $${available.toLocaleString('es-CO')} disponibles de $${limit.toLocaleString('es-CO')} de límite.`), { code: 'CREDIT_LIMIT_EXCEEDED', available, limit, currentBalance: card.currentBalance });
+        }
+        // ===============================
         
         if (installmentsTotalNum > 1 && req.body.installmentInterestRate !== undefined) {
            const ratePct = Number(req.body.installmentInterestRate);
