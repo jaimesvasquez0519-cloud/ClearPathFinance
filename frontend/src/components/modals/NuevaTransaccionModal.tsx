@@ -65,7 +65,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
 
   // CC Installment state
   const [installments, setInstallments] = useState(1);
-  const [interestRate, setInterestRate] = useState(0);
+  const [interestRate, setInterestRate] = useState<number | ''>('');
   const [showAmortizationTable, setShowAmortizationTable] = useState(false);
 
   const { data: accounts } = useQuery({
@@ -88,7 +88,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
     queryFn: async () => (await api.get('/goals')).data,
   });
 
-  const { register, handleSubmit, control, formState: { errors, isSubmitting }, watch } = useForm<FormData>({
+  const { register, handleSubmit, control, setValue, formState: { errors, isSubmitting }, watch } = useForm<FormData>({
     resolver: zodResolver(schema) as any,
     defaultValues: {
       type: 'expense',
@@ -108,7 +108,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
 
   // Live amortization calculation
   const monthlyPayment = useMemo(
-    () => calcMonthlyPayment(currentAmount, interestRate, installments),
+    () => calcMonthlyPayment(currentAmount, Number(interestRate) || 0, installments),
     [currentAmount, interestRate, installments]
   );
   const totalCost = monthlyPayment * installments;
@@ -116,7 +116,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
   
   const amortizationSchedule = useMemo(() => {
     if (installments <= 1) return [];
-    const r = interestRate / 100;
+    const r = (Number(interestRate) || 0) / 100;
     const schedule = [];
     let remainingPrincipal = currentAmount;
     
@@ -170,7 +170,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
       // Add installment data if paying with card
       if (showInstallments && installments > 1) {
         payload.installmentsTotal = installments;
-        payload.installmentInterestRate = interestRate;
+        payload.installmentInterestRate = Number(interestRate) || 0;
         payload.installmentCurrent = 1;
       }
 
@@ -242,10 +242,10 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                     key={t}
                     type="button"
                     onClick={() => {
-                      register('type').onChange({ target: { value: t } });
+                      setValue('type', t as any);
                       if (t === 'savings') {
                         setSourceType('account');
-                        register('cardId').onChange({ target: { value: '' } });
+                        setValue('cardId', '');
                       }
                     }}
                     className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all ${
@@ -268,7 +268,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
               <div className="flex bg-slate-100 p-0.5 rounded-lg">
                 <button
                   type="button"
-                  onClick={() => { setSourceType('account'); register('cardId').onChange({ target: { value: '' } }); }}
+                  onClick={() => { setSourceType('account'); setValue('cardId', ''); }}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'account' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                 >
                   <Wallet size={12} /> Cuenta
@@ -276,7 +276,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                 {selectedType !== 'savings' && (
                   <button
                     type="button"
-                    onClick={() => { setSourceType('card'); register('accountId').onChange({ target: { value: '' } }); }}
+                    onClick={() => { setSourceType('card'); setValue('accountId', ''); }}
                     className={`px-3 py-1 text-xs font-medium rounded-md transition-colors flex items-center gap-1.5 ${sourceType === 'card' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
                   >
                     <CardIcon size={12} /> Tarjeta
@@ -358,13 +358,13 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                   <label className="block text-xs font-medium text-slate-600 mb-1">Tasa mensual (%)</label>
                   <input
                     type="number"
-                    step="0.01"
+                    step="any"
                     min="0"
                     max="100"
                     value={interestRate}
-                    onChange={e => setInterestRate(Number(e.target.value))}
+                    onChange={e => setInterestRate(e.target.value ? Number(e.target.value) : '')}
                     placeholder="Ej: 2.5"
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm"
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
                   />
                 </div>
               </div>
@@ -386,7 +386,7 @@ const NuevaTransaccionModal = ({ onClose }: Props) => {
                   </div>
                 </div>
               )}
-              {installments > 1 && currentAmount > 0 && interestRate > 0 && (
+              {installments > 1 && currentAmount > 0 && (
                 <div className="mt-2">
                   <button 
                     type="button" 
