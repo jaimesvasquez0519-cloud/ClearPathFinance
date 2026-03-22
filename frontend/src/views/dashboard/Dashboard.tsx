@@ -73,6 +73,7 @@ const NeonTooltip = ({ active, payload, label }: any) => {
 
 const Dashboard = () => {
   const [currency, setCurrency] = useState<'COP' | 'USD'>('COP');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
   const { data, isLoading, error } = useQuery({ queryKey: ['dashboardSummary'], queryFn: async () => (await api.get('/dashboard')).data });
 
@@ -92,6 +93,13 @@ const Dashboard = () => {
      if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
      if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
      return String(Math.round(v));
+  };
+
+  const getNextDate = (day: number) => {
+    const d = new Date();
+    if (d.getDate() >= day) d.setMonth(d.getMonth() + 1);
+    d.setDate(day);
+    return d.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
   };
 
   return (
@@ -241,6 +249,57 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Category Filter & Chart Row */}
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <h3 className="text-base font-bold text-slate-800">Gasto Histórico por Categoría</h3>
+          <select 
+             value={selectedCategory} 
+             onChange={(e) => setSelectedCategory(e.target.value)}
+             className="bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary w-full sm:w-auto"
+          >
+             <option value="all">Todas las Categorías</option>
+             {data?.allTimeExpensesList?.map((c: any) => (
+                <option key={c.name} value={c.name}>{c.name}</option>
+             ))}
+          </select>
+        </div>
+        
+        {(() => {
+          if (!data?.historicalExpenses || data.historicalExpenses.length === 0) {
+             return <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">Sin datos históricos aún</div>;
+          }
+          
+          const filtered = data.historicalExpenses.filter((t: any) => selectedCategory === 'all' || t.category === selectedCategory);
+          const monthMap: Record<string, number> = {};
+          
+          filtered.forEach((t: any) => {
+             const d = new Date(t.date);
+             const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+             const key = `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+             monthMap[key] = (monthMap[key] || 0) + Number(t.amount);
+          });
+          
+          const chartData = Object.keys(monthMap).map(k => ({ month: k, amount: monthMap[k] }));
+          
+          if (chartData.length === 0) {
+            return <div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">No hay gastos en esta categoría en los últimos 3 meses</div>;
+          }
+          
+          return (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <YAxis tickFormatter={formatCOP} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+                <Bar dataKey="amount" name="Gasto Total" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          );
+        })()}
+      </div>
+
       <div className="w-full">
         {/* Tabla Formal de Tarjetas de Crédito */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col h-full overflow-hidden">
@@ -259,6 +318,11 @@ const Dashboard = () => {
                  
                  const cap = Number(card.pendingCapital || 0);
                  const int = Number(card.pendingInterest || 0);
+                 
+                 const cutDate = getNextDate(card.cutDay || 15);
+                 const dueDate = getNextDate(card.paymentDueDay || 30);
+                 const monthlyPaymentsSum = card.activeInstallments?.reduce((acc: number, inst: any) => acc + inst.payment, 0) || 0;
+                 const estimatedPayment = monthlyPaymentsSum + (card.currentMonthSpent || 0);
                  
                  return (
                    <div key={card.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-50/50 p-4 border border-slate-100 rounded-2xl items-start">
@@ -282,6 +346,16 @@ const Dashboard = () => {
                           <p className="text-xl font-black">{formatVal(card.currentBalance)}</p>
                        </div>
                        
+                       {/* ALERTS (FECHAS DE CORTE Y PAGO ESTIMADO) */}
+                       <div className="relative z-10 flex justify-between items-center text-[10px] mt-2 text-white/80 bg-black/20 p-2.5 rounded-lg border border-white/10 backdrop-blur-sm">
+                         <span>Corte: <strong className="text-white">{cutDate}</strong></span>
+                         <span>Pago Limite: <strong className="text-rose-300">{dueDate}</strong></span>
+                       </div>
+                       <div className="relative z-10 mt-2 text-[11px] text-center bg-black/40 p-2 rounded-lg border border-white/5 font-medium text-emerald-300 space-y-0.5 shadow-inner">
+                         <p className="text-[9px] uppercase tracking-wider text-emerald-500/80">Pago Estimado Mes</p>
+                         <p className="font-bold text-emerald-400 text-sm tracking-wide">{formatVal(estimatedPayment)}</p>
+                       </div>
+
                        {/* Consejos Rápido (Payoff Advice) integrado en el contenedor izquierdo debajo de la tarjeta */}
                        {card.payoffAdvice && (
                           <div className="relative z-10 mt-4 p-3 rounded-lg bg-black/30 border border-white/10 flex items-start gap-2 backdrop-blur-sm">

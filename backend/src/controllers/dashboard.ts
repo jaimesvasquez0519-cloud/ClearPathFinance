@@ -67,7 +67,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     const historical = await prisma.transaction.findMany({
       where: { userId, transactionDate: { gte: threeMonthsAgo }, type: { in: ['income', 'expense'] } },
-      select: { type: true, amount: true, transactionDate: true },
+      select: { type: true, amount: true, transactionDate: true, category: { select: { name: true } } },
     });
     
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -224,6 +224,11 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     }
     
     res.json({
+      historicalExpenses: historical.filter((t: any) => t.type === 'expense').map((t: any) => ({
+        date: t.transactionDate.toISOString().split('T')[0],
+        amount: Number(t.amount),
+        category: t.category?.name || 'Sin categoría'
+      })),
       debtAdvice,
       currentUsdPrice,
       usdHistory,
