@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-  LineChart, Line
+  AreaChart, Area
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, CreditCard as CardIcon, ShieldCheck, ChevronRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, CreditCard as CardIcon, ShieldCheck, Activity } from 'lucide-react';
 
 const formatCOPFull = (v: number) => {
   try {
@@ -61,6 +61,16 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+const NeonTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-slate-900 border border-slate-700/50 rounded-lg shadow-xl p-3 text-xs text-slate-300">
+      <p className="font-bold text-slate-300 mb-1 text-center">{label}</p>
+      <p className="font-bold text-emerald-400">TRM: ${formatCOPFull(payload[0].value)}</p>
+    </div>
+  );
+};
+
 const Dashboard = () => {
   const [currency, setCurrency] = useState<'COP' | 'USD'>('COP');
   
@@ -94,30 +104,19 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center gap-4">
            {data?.currentUsdPrice > 0 && (
-             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-2 shadow-sm">
-                <div className="mr-3">
-                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">TRM HOY</p>
-                   <p className="text-sm font-black text-slate-700 leading-tight">${formatCOPFull(data.currentUsdPrice)}</p>
-                </div>
-                {data?.usdHistory && data.usdHistory.length > 0 && (
-                  <div className="w-32 h-8">
-                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={data.usdHistory}>
-                           <Line type="monotone" dataKey="valor" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
-                        </LineChart>
-                     </ResponsiveContainer>
-                  </div>
-                )}
+             <div className="bg-white border border-slate-200 rounded-xl p-2.5 px-4 shadow-sm flex flex-col justify-center items-end">
+                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">TRM HOY</p>
+                 <p className="text-lg font-black text-slate-700 leading-none">${formatCOPFull(data.currentUsdPrice)}</p>
              </div>
            )}
-           <div className="bg-slate-200/60 p-1 rounded-xl flex">
+           <div className="bg-slate-200/60 p-1 rounded-xl flex shadow-inner">
               <button 
                 onClick={() => setCurrency('COP')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${currency === 'COP' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${currency === 'COP' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >COP</button>
               <button 
                 onClick={() => setCurrency('USD')} 
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${currency === 'USD' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${currency === 'USD' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
               >USD</button>
            </div>
         </div>
@@ -137,7 +136,7 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Financial Insights Widget — Módulo Inteligencia Exacta */}
+      {/* FINSCORE WIDGET */}
       {(() => {
         const effortRate = data?.effortRate || 0;
         let tier: 'critical' | 'warning' | 'good' = 'good';
@@ -190,7 +189,7 @@ const Dashboard = () => {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-lg">{tierConfig.emoji}</span>
-                <h3 className={`text-base font-bold flex items-center gap-2 ${tierConfig.text}`}>Score y Capacidad</h3>
+                <h3 className={`text-base font-bold flex items-center gap-2 ${tierConfig.text}`}>Score Matemático de Capacidad</h3>
                 <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${tierConfig.labelColor}`}>{tierConfig.label}</span>
               </div>
               <p className={`text-sm font-medium leading-relaxed max-w-3xl ${tierConfig.sub}`}>{data?.financialInsight}</p>
@@ -199,22 +198,58 @@ const Dashboard = () => {
         );
       })()}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col">
-          <h3 className="text-base font-bold text-slate-800 mb-5">Ingresos vs Gastos — Últimos 3 meses</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        {/* Histórico Dólar al Estilo NeonDB Interactivo */}
+        <div className="bg-[#09090b] rounded-2xl shadow-lg border border-slate-700/60 p-6 flex flex-col overflow-hidden text-slate-200">
+           <div className="flex justify-between items-center mb-6">
+              <h3 className="text-sm font-bold tracking-wide flex items-center gap-2 text-white">
+                <Activity size={16} className="text-emerald-400" /> Histórico TRM (Dólar a COP)
+              </h3>
+              <p className="text-[10px] font-mono text-slate-400">Últimos 30 días</p>
+           </div>
+           
+           {data?.usdHistory && data.usdHistory.length > 0 ? (
+             <div className="flex-1 w-full min-h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                   <AreaChart data={data.usdHistory} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorUsd" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.5} />
+                      <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} minTickGap={30} />
+                      <YAxis domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} tick={{ fill: '#64748b', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<NeonTooltip />} cursor={{ stroke: '#475569', strokeWidth: 1, strokeDasharray: '3 3' }} />
+                      <Area type="monotone" dataKey="valor" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorUsd)" isAnimationActive={true} />
+                   </AreaChart>
+                </ResponsiveContainer>
+             </div>
+           ) : (
+             <div className="flex-1 flex items-center justify-center text-slate-500 text-xs font-mono">Cargando métricas...</div>
+           )}
+        </div>
+
+        {/* Ingresos vs Gastos */}
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col">
+          <h3 className="text-base font-bold text-slate-800 mb-6">Cashflow — Últimos 3 meses</h3>
           {data?.monthlyChart?.some((m: any) => m.ingresos > 0 || m.gastos > 0) ? (
             <ResponsiveContainer width="100%" height={220}><BarChart data={data.monthlyChart} barCategoryGap="30%"><CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" /><XAxis dataKey="month" tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} /><YAxis tickFormatter={formatCOP} tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} width={55} /><Tooltip content={<CustomTooltip />} /><Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs text-slate-600 font-medium capitalize">{v}</span>} /><Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} /><Bar dataKey="gastos" name="Gastos" fill="#f43f5e" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer>
           ) : (<div className="h-48 flex items-center justify-center text-slate-400 text-sm italic">Sin datos históricos aún</div>)}
         </div>
+      </div>
 
-        {/* Tarjetas de Crédito Detalladas con Cuotas */}
-        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col h-full overflow-hidden">
-          <div className="flex justify-between items-end mb-4">
-             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2"><CardIcon size={18} className="text-slate-500" /> Tarjetas</h3>
+      <div className="w-full">
+        {/* Tabla Formal de Tarjetas de Crédito */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col h-full overflow-hidden">
+          <div className="flex justify-between items-center mb-6">
+             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2"><CardIcon size={20} className="text-slate-500" /> Tus Tarjetas y Tabla de Cuotas</h3>
           </div>
 
           {data?.creditCards?.length > 0 ? (
-            <div className="space-y-6 flex-1 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
+            <div className="space-y-10 flex-1">
               {data.creditCards.map((card: any) => {
                  let b1 = 'from-slate-700 to-slate-900', t1 = 'text-white';
                  let netLogo = '';
@@ -226,9 +261,10 @@ const Dashboard = () => {
                  const int = Number(card.pendingInterest || 0);
                  
                  return (
-                   <div key={card.id} className="relative">
-                     {/* Tarjeta Física */}
-                     <div className={`p-5 rounded-t-2xl rounded-b-lg shadow-md bg-gradient-to-br ${b1} ${t1} relative overflow-hidden group z-10`}>
+                   <div key={card.id} className="grid grid-cols-1 md:grid-cols-12 gap-6 bg-slate-50/50 p-4 border border-slate-100 rounded-2xl items-start">
+                     
+                     {/* Tarjeta Visual: Lado Izquierdo */}
+                     <div className={`col-span-1 md:col-span-4 p-5 rounded-xl shadow-md bg-gradient-to-br ${b1} ${t1} relative overflow-hidden group z-10 w-full max-w-sm`}>
                        <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/10 blur-xl"></div>
                        <div className="absolute -left-6 -bottom-6 w-20 h-20 rounded-full bg-black/10 blur-xl"></div>
                        <div className="relative z-10 flex justify-between items-start mb-6">
@@ -242,63 +278,76 @@ const Dashboard = () => {
                        </div>
                        
                        <div className="relative z-10 space-y-1 mb-4">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Deuda Actual</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Deuda Global</p>
                           <p className="text-xl font-black">{formatVal(card.currentBalance)}</p>
                        </div>
-                       <div className="relative z-10 grid grid-cols-2 gap-2 text-xs bg-black/20 p-3 rounded-xl border border-white/10 backdrop-blur-sm">
-                          <div>
-                             <p className="text-white/60 font-medium text-[10px] uppercase">Capital Pend.</p>
-                             <p className="font-bold">{formatVal(cap)}</p>
+                       
+                       {/* Consejos Rápido (Payoff Advice) integrado en el contenedor izquierdo debajo de la tarjeta */}
+                       {card.payoffAdvice && (
+                          <div className="relative z-10 mt-4 p-3 rounded-lg bg-black/30 border border-white/10 flex items-start gap-2 backdrop-blur-sm">
+                             <ShieldCheck size={16} className="text-emerald-400 mt-0.5 shrink-0" />
+                             <div>
+                                <h4 className="text-[9px] font-black uppercase tracking-wider text-white/80 mb-1">Consejo Automático</h4>
+                                <p className="text-[10px] font-medium text-white/70 leading-snug">{card.payoffAdvice}</p>
+                             </div>
                           </div>
-                          <div>
-                             <p className="text-white/60 font-medium text-[10px] uppercase">Int. Pend.</p>
-                             <p className="font-bold text-rose-300">{formatVal(int)}</p>
-                          </div>
-                       </div>
+                       )}
                      </div>
                      
-                     {/* Compras a Cuotas Activas */}
-                     <div className="bg-slate-50 border border-slate-200 border-t-0 rounded-b-2xl pt-4 pb-4 px-3 shadow-sm relative -mt-2 z-0">
-                        {card.activeInstallments && card.activeInstallments.length > 0 ? (
-                           <div className="space-y-2 mt-1">
-                             <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5 pl-1"><ChevronRight size={12}/> Cuotas en curso</h4>
-                             {card.activeInstallments.map((inst: any) => (
-                               <div key={inst.id} className="bg-white p-2.5 rounded-xl border border-slate-100 shadow-sm">
-                                  <div className="flex justify-between items-start mb-1">
-                                    <p className="text-xs font-bold text-slate-700 capitalize line-clamp-1 flex-1">{inst.description}</p>
-                                    <span className="bg-slate-100 text-[9px] text-slate-500 font-bold px-1.5 py-0.5 rounded shadow-sm">{inst.installmentCurrent}/{inst.installmentsTotal}</span>
-                                  </div>
-                                  <p className="text-[10px] text-slate-500 font-medium">Cuota: <strong className="text-slate-700">{formatVal(inst.payment)}</strong></p>
-                                  <div className="flex gap-2 text-[9px] mt-1.5 pt-1.5 border-t border-slate-50 text-slate-500">
-                                      <span>Cap: {formatVal(inst.capital)}</span>
-                                      <span className="text-rose-400 font-semibold border-l border-slate-100 pl-2">Int: {formatVal(inst.interest)}</span>
-                                  </div>
-                               </div>
-                             ))}
-                           </div>
-                        ) : (
-                           <p className="text-xs text-center text-slate-400 font-medium italic mt-2 py-4">Sin cuotas pendientes de pago</p>
-                        )}
-                        
-                        {/* Consejos Rápido (Payoff Advice) */}
-                        {card.payoffAdvice && (
-                           <div className="mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-100/50 flex items-start gap-2">
-                              <ShieldCheck size={16} className="text-indigo-500 mt-0.5 shrink-0" />
+                     {/* Tabla de Cuotas Activas: Lado Derecho */}
+                     <div className="col-span-1 md:col-span-8 overflow-x-auto w-full pt-1">
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                           <div className="grid grid-cols-2 gap-4 bg-slate-50/80 p-3 border-b border-slate-200 text-xs">
                               <div>
-                                 <h4 className="text-[10px] font-black uppercase tracking-wider text-indigo-900 mb-0.5">Consejo Rápido</h4>
-                                 <p className="text-[10px] font-medium text-indigo-700/90 leading-snug">{card.payoffAdvice}</p>
+                                 <span className="text-slate-500 font-medium mr-2">Progreso Capital:</span>
+                                 <span className="font-bold text-slate-800">{formatVal(cap)}</span>
+                              </div>
+                              <div className="text-right">
+                                 <span className="text-slate-500 font-medium mr-2">Progreso Interés:</span>
+                                 <span className="font-bold text-rose-500">{formatVal(int)}</span>
                               </div>
                            </div>
-                        )}
+                           
+                           {card.activeInstallments && card.activeInstallments.length > 0 ? (
+                             <table className="w-full text-left border-collapse">
+                               <thead>
+                                 <tr className="bg-white border-b border-slate-100 text-[10px] text-slate-400 uppercase tracking-widest text-left">
+                                   <th className="font-bold py-3 px-4">Concepto</th>
+                                   <th className="font-bold py-3 px-3 text-center">Progreso</th>
+                                   <th className="font-bold py-3 px-3 text-right">Cuota Mensual</th>
+                                   <th className="font-bold py-3 px-3 text-right hidden sm:table-cell">A Capital</th>
+                                   <th className="font-bold py-3 px-3 text-right hidden sm:table-cell">A Interés</th>
+                                 </tr>
+                               </thead>
+                               <tbody className="divide-y divide-slate-100">
+                                 {card.activeInstallments.map((inst: any) => (
+                                   <tr key={inst.id} className="text-xs text-slate-600 hover:bg-slate-50 transition-colors">
+                                     <td className="py-3 px-4 font-semibold text-slate-800 break-words max-w-[150px]">{inst.description}</td>
+                                     <td className="py-3 px-3 text-center font-bold">
+                                       <span className="bg-slate-100 text-slate-600 font-black px-2 py-0.5 rounded shadow-sm">{inst.installmentCurrent} / {inst.installmentsTotal}</span>
+                                     </td>
+                                     <td className="py-3 px-3 text-right font-bold text-slate-900">{formatVal(inst.payment)}</td>
+                                     <td className="py-3 px-3 text-right text-slate-500 hidden sm:table-cell">{formatVal(inst.capital)}</td>
+                                     <td className="py-3 px-3 text-right font-semibold text-rose-400 hidden sm:table-cell">{formatVal(inst.interest)}</td>
+                                   </tr>
+                                 ))}
+                               </tbody>
+                             </table>
+                           ) : (
+                             <div className="p-8 text-center text-slate-400 text-xs font-medium italic">
+                               <p>No tienes compras a cuotas vigentes.</p>
+                             </div>
+                           )}
+                        </div>
                      </div>
                    </div>
                  );
               })}
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 opacity-60">
+            <div className="flex flex-col items-center justify-center text-slate-400 opacity-60 p-10 border border-dashed border-slate-300 rounded-xl">
                <CardIcon size={40} className="mb-3" />
-               <p className="text-sm font-medium">Sin tarjetas</p>
+               <p className="text-sm font-medium">No has vinculado tarjetas de crédito aún.</p>
             </div>
           )}
         </div>
