@@ -36,7 +36,7 @@ const PagarTarjetaModal = ({ onClose, card }: PagarTarjetaModalProps) => {
   });
 
   const payMutation = useMutation({
-    mutationFn: (data: PayCardForm) => api.post('/transactions/pay-card', {
+    mutationFn: (data: PayCardForm) => api.post('/transactions/pay-credit-card', {
       ...data,
       cardId: card.id,
       description: `Abono/Pago a ${card.cardName || card.bankName}`

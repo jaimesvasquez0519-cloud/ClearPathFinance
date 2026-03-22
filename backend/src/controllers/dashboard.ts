@@ -4,34 +4,26 @@ import { prisma } from '../db';
 export const getDashboardSummary = async (req: any, res: Response) => {
   try {
     const userId = req.user.id;
-
     const user = await prisma.user.findUnique({ where: { id: userId } });
     const globalSavingsGoal = user?.globalSavingsGoal || 0;
 
-    const accounts = await prisma.account.findMany({
-      where: { userId, isActive: true },
-    });
-    // totalBalance explicitly only counts Accounts (liquid cash/bank), satisfying "excluded from main liquidity"
+    const accounts = await prisma.account.findMany({ where: { userId, isActive: true }});
     const totalBalance = accounts.reduce((sum: number, acc: any) => sum + Number(acc.currentBalance), 0);
 
-    // Current month
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const monthlyTransactions = await prisma.transaction.findMany({
-      where: {
-        userId,
-        transactionDate: { gte: startOfMonth },
-      },
+      where: { userId, transactionDate: { gte: startOfMonth } },
       include: { category: true },
     });
 
     let currentMonthIncome = 0;
     let currentMonthExpense = 0;
     const expenseByCategory: Record<string, number> = {};
-
     let currentMonthCreditUsage = 0;
     let currentMonthSavings = 0;
+    let currentMonthDebtPayments = 0;
 
     monthlyTransactions.forEach((t: any) => {
       const amount = Number(t.amount);
@@ -41,6 +33,12 @@ export const getDashboardSummary = async (req: any, res: Response) => {
         currentMonthExpense += amount;
         const catName: string = t.category?.name || 'Sin categoría';
         expenseByCategory[catName] = (expenseByCategory[catName] || 0) + amount;
+        
+        // Effort rate component
+        const lowerCat: string = catName.toLowerCase();
+        if (lowerCat.includes('hipoteca') || lowerCat.includes('tarjeta') || lowerCat.includes('crédito') || lowerCat.includes('prestamo') || lowerCat.includes('préstamo') || lowerCat.includes('deuda') || t.cardId) {
+          currentMonthDebtPayments += amount;
+        }
       } else if (t.type === 'expense' && t.isDeferred) {
         currentMonthCreditUsage += amount;
       } else if (t.type === 'savings') {
@@ -49,148 +47,146 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     });
 
     const netSavings = currentMonthIncome - currentMonthExpense - currentMonthSavings;
+    const effortRate = currentMonthIncome > 0 ? (currentMonthDebtPayments / currentMonthIncome) * 100 : 0;
 
-    const expensesDistribution = Object.keys(expenseByCategory)
-      .map((key) => ({ name: key, value: expenseByCategory[key] }))
-      .sort((a, b) => (b.value || 0) - (a.value || 0));
+    // === MÓDULO INTELIGENCIA FINANCIERA (SCORE EXACTO) ===
+    let finScore = Math.max(0, 100 - effortRate);
+    let financialInsight = "";
+    
+    if (effortRate < 40) {
+      financialInsight = "Vas por excelente camino. Tienes liquidez para ahorrar y tus deudas están controladas.";
+    } else if (effortRate <= 80) {
+      financialInsight = "Estás llegando a tu límite de capacidad de pago. Modera tus gastos a cuotas.";
+    } else {
+      financialInsight = `¡Atención! Has excedido el 80% de tus ingresos en deudas. Evita cualquier nueva deuda inmediatamente.`;
+    }
+
+    const expensesDistribution = Object.keys(expenseByCategory).map((name) => ({ name, value: expenseByCategory[name] })).sort((a, b) => b.value - a.value);
 
     // === HISTORICAL: last 3 months ===
     const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1);
     const historical = await prisma.transaction.findMany({
-      where: {
-        userId,
-        transactionDate: { gte: threeMonthsAgo },
-        type: { in: ['income', 'expense'] },
-      },
+      where: { userId, transactionDate: { gte: threeMonthsAgo }, type: { in: ['income', 'expense'] } },
       select: { type: true, amount: true, transactionDate: true },
     });
-
-    // Build a map: "2026-01" -> { month, ingresos, gastos }
+    
     const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     const monthMap: Record<string, { month: string; ingresos: number; gastos: number }> = {};
-
     for (let i = 2; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       monthMap[key] = { month: monthNames[d.getMonth()] || '', ingresos: 0, gastos: 0 };
     }
-
     historical.forEach((t: any) => {
       const d = new Date(t.transactionDate);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (monthMap[key]) {
-        const amount = Number(t.amount);
-        if (t.type === 'income') monthMap[key].ingresos += amount;
-        else monthMap[key].gastos += amount;
+        if (t.type === 'income') monthMap[key].ingresos += Number(t.amount);
+        else monthMap[key].gastos += Number(t.amount);
       }
     });
-
     const monthlyChart = Object.values(monthMap);
 
-    // === FINSCORE LOGIC ===
-    let finScore = 50; // Base score
-    
-    // Factor 1: Savings (Higher savings = better score)
-    if (netSavings > 0) {
-      finScore += 20; // Bonus for saving
-      // Calculate savings ratio
-      const savingsRatio = currentMonthIncome > 0 ? (netSavings / currentMonthIncome) : 0;
-      if (savingsRatio >= 0.2 && isFinite(savingsRatio)) finScore += 15; // +15 for saving 20%+
-      else if (savingsRatio >= 0.1 && isFinite(savingsRatio)) finScore += 10;
-    } else if (netSavings < 0) {
-      finScore -= 20; // Penalty for deficit
-    }
-
-    // Factor 2: Activity (Bonus for having recorded transactions)
-    if (monthlyTransactions.length > 5) finScore += 5;
-    if (historical.length > 20) finScore += 10;
-
-    // Factor 3: Savings habit (own savings transactions)
-    if (currentMonthSavings > 0) finScore += 5;
-
-    // Factor 4: Cap the score between 0 and 100 (BEFORE credit card penalty)
-    finScore = Math.max(0, Math.min(100, finScore));
-
-    // === CREDIT CARDS ALERTS ===
+    // === CREDIT CARDS ALERTS & INSTALLMENTS ===
     const creditCardsRaw = await prisma.creditCard.findMany({
       where: { userId },
       select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true, creditLimit: true, lastFourDigits: true }
     });
 
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    let totalCreditLimit = 0;
+    let totalCreditUsed = 0;
 
     const creditCards = await Promise.all(creditCardsRaw.map(async (card: any) => {
-      const deferredTxs = await prisma.transaction.findMany({
-        where: { cardId: card.id, isDeferred: true }
-      });
+      totalCreditLimit += Number(card.creditLimit || 0);
+      totalCreditUsed += Number(card.currentBalance || 0);
+
+      const deferredTxs = await prisma.transaction.findMany({ where: { cardId: card.id, isDeferred: true } });
       
       let pendingCapital = 0;
       let pendingInterest = 0;
+      let activeInstallments: any[] = [];
       
       deferredTxs.forEach((tx: any) => {
         if (tx.amortizationSchedule) {
           try {
             const schedule = typeof tx.amortizationSchedule === 'string' ? JSON.parse(tx.amortizationSchedule) : tx.amortizationSchedule;
+            
+            const currentInst = schedule.find((inst: any) => inst.status === 'pending') || schedule[0];
+            if (currentInst) {
+              const cap = Number(currentInst.capital || currentInst.principal || 0);
+              const int = Number(currentInst.interest || 0);
+              const pmt = Number(currentInst.payment || cap + int);
+              
+              activeInstallments.push({
+                 id: tx.id,
+                 description: tx.description || 'Compra diferida',
+                 date: tx.transactionDate,
+                 installmentCurrent: currentInst.installment,
+                 installmentsTotal: tx.installmentsTotal,
+                 capital: cap,
+                 interest: int,
+                 payment: pmt,
+                 originalAmount: Number(tx.amount)
+              });
+            }
+
             schedule.forEach((inst: any) => {
                if (inst.status === 'pending') {
-                 pendingCapital += Number(inst.principal);
-                 pendingInterest += Number(inst.interest);
+                 pendingCapital += Number(inst.principal || inst.capital || 0);
+                 pendingInterest += Number(inst.interest || 0);
                }
             });
           } catch(e) {}
         }
       });
+      activeInstallments.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       const thisMonthSpent = await prisma.transaction.aggregate({
-        where: { cardId: card.id, type: 'expense', transactionDate: { gte: currentMonthStart } },
+        where: { cardId: card.id, type: 'expense', transactionDate: { gte: startOfMonth } },
         _sum: { amount: true }
       });
+      
+      // Payoff Advice
+      let payoffAdvice = "";
+      if (card.currentBalance > 0 && currentMonthIncome > 0) {
+         if (effortRate < 40) {
+            const extra = Math.round(currentMonthIncome * 0.1);
+            payoffAdvice = `Buena liquidez mensual. Si logras aportar $${extra.toLocaleString('es-CO')} extra a capital en ${card.bankName}, terminarás de pagar deuda meses antes ahorrando dinero futuro en intereses brutos.`;
+         } else if (effortRate <= 80) {
+            payoffAdvice = `Llegaste a la zona de precaución. Mantén tus cuotas estables y evalúa recortar compras no vitales en ${card.bankName}.`;
+         } else {
+            payoffAdvice = `¡Advertencia! No uses esta tarjeta (${card.bankName}) para nuevos consumos. Prioriza pagar al menos el mínimo.`;
+         }
+      } else if (card.currentBalance === 0) {
+         payoffAdvice = `Todo en cero. Excelente manejo de tu financiamiento.`;
+      }
 
       return {
         ...card,
         pendingCapital,
         pendingInterest,
+        activeInstallments,
+        payoffAdvice,
         currentMonthSpent: Number(thisMonthSpent._sum?.amount || 0)
       };
     }));
 
-    // === CREDIT CARD UTILIZATION (for finScore) ===
-    let totalCreditLimit = 0;
-    let totalCreditUsed = 0;
-    creditCards.forEach((card: any) => {
-      totalCreditLimit += Number(card.creditLimit || 0);
-      totalCreditUsed += Number(card.currentBalance || 0);
-    });
     const creditUtilizationRate = totalCreditLimit > 0 ? (totalCreditUsed / totalCreditLimit) * 100 : 0;
 
-    // === ALL-TIME CATEGORY EXPENSES ===
-    const allTransactions = await prisma.transaction.findMany({
-      where: { userId, type: 'expense' },
-      include: { category: true }
-    });
-
+    // === ALL-TIME CATEGORY EXPENSES & GOALS ===
+    const allTransactions = await prisma.transaction.findMany({ where: { userId, type: 'expense' }, include: { category: true } });
     const allTimeCategoryExpenses: Record<string, number> = {};
-
     allTransactions.forEach((t: any) => {
-      const amount = Number(t.amount);
       const catName = t.category?.name || 'Sin categoría';
-      
-      allTimeCategoryExpenses[catName] = (allTimeCategoryExpenses[catName] || 0) + amount;
+      allTimeCategoryExpenses[catName] = (allTimeCategoryExpenses[catName] || 0) + Number(t.amount);
     });
+    const allTimeExpensesList = Object.keys(allTimeCategoryExpenses).map(name => ({ name, value: allTimeCategoryExpenses[name] })).sort((a,b) => b.value - a.value);
 
-    const allTimeExpensesList = Object.keys(allTimeCategoryExpenses)
-      .map(name => ({ name, value: allTimeCategoryExpenses[name] }))
-      .sort((a,b) => b.value - a.value);
-
-    // === SAVINGS & EMERGENCY POCKETS (PHASE 6 & 7) ===
-    const goals = await prisma.goal.findMany({
-      where: { userId }
-    });
-    
+    // Goals (Emergency Fund logic)
+    const goals = await prisma.goal.findMany({ where: { userId } });
     let emergencyFundTotal = 0;
     let emergencyFundTarget = 0;
     let savingsTotal = 0;
-    
     goals.forEach((g: any) => {
       if (g.type === 'emergency') {
         emergencyFundTotal += Number(g.currentAmount || 0);
@@ -200,124 +196,19 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       }
     });
 
-    // === KPI: BURN RATE & RUNWAY ===
-    const totalHistoricalExpenses = historical
-      .filter((t: any) => t.type === 'expense')
-      .reduce((sum: number, t: any) => sum + Number(t.amount), 0);
+    const totalHistoricalExpenses = historical.filter((t: any) => t.type === 'expense').reduce((sum: number, t: any) => sum + Number(t.amount), 0);
     const daysSinceThreeMonthsAgo = Math.max(1, Math.floor((now.getTime() - threeMonthsAgo.getTime()) / (1000 * 60 * 60 * 24)));
     const burnRate = totalHistoricalExpenses / daysSinceThreeMonthsAgo;
     const runwayDays = (burnRate > 0 && isFinite(burnRate)) ? Math.round(totalBalance / burnRate) : 999;
 
-    // === KPI: TASA DE ESFUERZO (EFFORT RATE) & FINANCIAL INSIGHT ===
-    let currentMonthDebtPayments = 0;
-    monthlyTransactions.forEach((t: any) => {
-      const amount = Number(t.amount);
-      if (t.type === 'expense' && !t.isDeferred) {
-        const catName: string = (t.category?.name || '').toLowerCase();
-        if (catName.includes('hipoteca') || catName.includes('tarjeta') || catName.includes('crédito') || catName.includes('prestamo') || catName.includes('préstamo') || catName.includes('deuda') || t.cardId) {
-          currentMonthDebtPayments += amount;
-        }
-      }
-    });
-    const effortRate = currentMonthIncome > 0 ? (currentMonthDebtPayments / currentMonthIncome) * 100 : 0;
-
-    // === CREDIT UTILIZATION PENALTY on finScore ===
-    // Penalize if credit utilization > 30%
-    if (creditUtilizationRate > 80) finScore -= 20;
-    else if (creditUtilizationRate > 50) finScore -= 10;
-    else if (creditUtilizationRate > 30) finScore -= 5;
-    // Bonus for keeping utilization below 10%
-    if (creditUtilizationRate > 0 && creditUtilizationRate < 10) finScore += 5;
-    finScore = Math.max(0, Math.min(100, finScore));
-    // =============================================
-    
-    let financialInsight = "";
-    if (effortRate < 20) {
-      financialInsight = "Tu nivel de endeudamiento es saludable. ¡Excelente manejo!";
-    } else if (effortRate <= 35) {
-      financialInsight = `Tu nivel de endeudamiento es del ${Math.round(effortRate)}%. Considera no diferir compras a más de 1 cuota este mes.`;
-    } else {
-      financialInsight = `¡Atención! Tu capacidad de pago está comprometida (${Math.round(effortRate)}% de tus ingresos). Evita nuevas deudas.`;
-    }
-
-    // === SMART PRO: BALANCE PREDICTION (Linear Regression) ===
-    // Find transactions in the last 30 days to build a running balance
-    // We will approximate linear regression y = mx + b where x is day (0 to 30)
-    // For simplicity, we use the historical transactions to find daily net flow
-    // Calculate b = currentBalance
-    // Calculate m = average daily net flow over last 30 days
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentTx = await prisma.transaction.findMany({
-      where: { userId, transactionDate: { gte: thirtyDaysAgo } }
-    });
-    const netFlow30 = recentTx.reduce((acc: number, t: any) => acc + (t.type === 'income' ? Number(t.amount) : -Number(t.amount)), 0);
-    const dailyTrend = netFlow30 / 30;
-    
-    const currentDay = now.getDate();
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysLeft = daysInMonth - currentDay;
-    const predictedEndOfWeekBalance = isFinite(dailyTrend) ? totalBalance + (dailyTrend * 7) : totalBalance;
-    const predictedEndOfMonthBalance = isFinite(dailyTrend) ? totalBalance + (dailyTrend * daysLeft) : totalBalance;
-
-    // === SMART PRO: EXPENSE OPTIMIZATION INSIGHT ===
     let optimizationInsight = "Tus gastos están bajo control este mes. ¡Sigue así!";
-    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-    
-    const lastMonthTx = await prisma.transaction.findMany({
-      where: { userId, type: 'expense', transactionDate: { gte: lastMonthStart, lte: lastMonthEnd } },
-      include: { category: true }
-    });
-    
-    const lastMonthCategoryTotals: Record<string, number> = {};
-    lastMonthTx.forEach((t: any) => {
-      const cat = t.category?.name || 'Otros';
-      lastMonthCategoryTotals[cat] = (lastMonthCategoryTotals[cat] || 0) + Number(t.amount);
-    });
+    let debtAdvice = financialInsight; // Re-mapped the old debt advice to the effort insight
 
-    let highestExcessCat = '';
-    let highestExcessAmount = 0;
-
-    Object.keys(expenseByCategory).forEach(cat => {
-      const currentM = expenseByCategory[cat];
-      const lastM = lastMonthCategoryTotals[cat] || 0;
-      if (lastM > 0 && currentM > lastM * 1.2) { // 20% more
-        const excess = currentM - lastM;
-        if (excess > highestExcessAmount) {
-          highestExcessAmount = excess;
-          highestExcessCat = cat;
-        }
-      }
-    });
-
-    if (highestExcessCat && highestExcessAmount > 0) {
-      optimizationInsight = `Has gastado $${Math.round(highestExcessAmount).toLocaleString('es-CO')} más en ${highestExcessCat} que el mes pasado promedio. Si reduces esto, podrías alcanzar tus metas de ahorro más rápido.`;
-    }
-
-    // === DEBT ADVICE ===
-    let debtAdvice = "No tienes deudas activas. ¡Excelente trabajo construyendo tu patrimonio!";
-    if (totalCreditUsed > 0 && creditCards.length > 0) {
-       const highestCard = creditCards.reduce((prev: any, current: any) => {
-          const prevUtil = prev.creditLimit > 0 ? prev.currentBalance / prev.creditLimit : 0;
-          const currUtil = current.creditLimit > 0 ? current.currentBalance / current.creditLimit : 0;
-          return (prevUtil > currUtil) ? prev : current;
-       }, creditCards[0]);
-
-       if (creditUtilizationRate > 50) {
-         debtAdvice = `Tienes un uso alto de crédito (${Math.round(creditUtilizationRate)}%). Intenta aportar capital extraordinario a tu ${highestCard.bankName || 'tarjeta'} para reducir intereses y mejorar tu Score.`;
-       } else if (effortRate > 30) {
-         debtAdvice = `Tus cuotas de deuda absorben una parte importante de tus ingresos. Si tienes ahorros, considera saldar total o parcialmente tu ${highestCard.bankName || 'tarjeta'}.`;
-       } else {
-         debtAdvice = `Tu uso de crédito es responsable (${Math.round(creditUtilizationRate)}%). Recuerda hacer las próximas compras a 1 cuota en tu ${highestCard.bankName || 'tarjeta'}.`;
-       }
-    }
-
-    // === USD/COP EXCHANGE RATE ===
+    // === USD/COP EXCHANGE RATE HISTORICAL (30 DAYS LIMIT) ===
     let usdHistory: any[] = [];
     let currentUsdPrice = 4000;
     try {
-      const trmResponse = await fetch('https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=10&$order=vigenciadesde%20DESC');
+      const trmResponse = await fetch('https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=30&$order=vigenciadesde%20DESC');
       if (trmResponse.ok) {
         const data = await trmResponse.json();
         usdHistory = data.map((d: any) => ({
@@ -348,8 +239,6 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       creditUtilizationRate: Math.round(creditUtilizationRate * 10) / 10,
       currentMonthCreditUsage,
       currentMonthSavings,
-      predictedEndOfWeekBalance,
-      predictedEndOfMonthBalance,
       optimizationInsight,
       expensesDistribution,
       monthlyChart,
@@ -359,9 +248,7 @@ export const getDashboardSummary = async (req: any, res: Response) => {
       savingsTotal,
       globalSavingsGoal,
       allTimeExpensesList,
-      recentTransactions: monthlyTransactions
-        .sort((a: any, b: any) => new Date(b.createdAt || b.transactionDate).getTime() - new Date(a.createdAt || a.transactionDate).getTime())
-        .slice(0, 5),
+      recentTransactions: monthlyTransactions.sort((a: any,b: any)=>new Date(b.createdAt || b.transactionDate).getTime() - new Date(a.createdAt || a.transactionDate).getTime()).slice(0, 5),
     });
   } catch (error) {
     console.error('[DASHBOARD ERROR]', error);
@@ -424,4 +311,3 @@ export const simulateScenario = async (req: any, res: Response) => {
     res.status(500).json({ error: 'Error running simulation' });
   }
 };
-

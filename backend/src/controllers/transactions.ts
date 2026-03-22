@@ -112,6 +112,15 @@ export const createTransaction = async (req: any, res: Response) => {
         }
       }
 
+      let finalGoalId = req.body.goalId;
+      if (finalCategoryId) {
+         const cat = await tx.category.findUnique({ where: { id: finalCategoryId }});
+         if (cat?.name?.toLowerCase().includes('emergencia')) {
+             const emergeGoal = await tx.goal.findFirst({ where: { userId: req.user.id, type: 'emergency' } });
+             if (emergeGoal) finalGoalId = emergeGoal.id;
+         }
+      }
+
       // 2. Create the transaction
       const transaction = await tx.transaction.create({
         data: {
@@ -122,7 +131,7 @@ export const createTransaction = async (req: any, res: Response) => {
           categoryId: finalCategoryId || null,
           accountId: accountId || null,
           cardId: cardId || null,
-          goalId: req.body.goalId || null,
+          goalId: finalGoalId || null,
           description,
           transactionDate: new Date(transactionDate),
           isDeferred,
@@ -144,9 +153,9 @@ export const createTransaction = async (req: any, res: Response) => {
             data: { currentBalance: { decrement: parsedAmount } }
           });
         }
-        if (req.body.goalId) {
+        if (finalGoalId) {
           await tx.goal.update({
-            where: { id: req.body.goalId },
+            where: { id: finalGoalId },
             data: { currentAmount: { increment: parsedAmount } }
           });
         }
