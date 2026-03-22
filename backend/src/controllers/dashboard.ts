@@ -112,10 +112,47 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     finScore = Math.max(0, Math.min(100, finScore));
 
     // === CREDIT CARDS ALERTS ===
-    const creditCards = await prisma.creditCard.findMany({
+    const creditCardsRaw = await prisma.creditCard.findMany({
       where: { userId },
       select: { id: true, bankName: true, cardName: true, paymentDueDay: true, currentBalance: true, cardNetwork: true, creditLimit: true, lastFourDigits: true }
     });
+
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const creditCards = await Promise.all(creditCardsRaw.map(async (card: any) => {
+      const deferredTxs = await prisma.transaction.findMany({
+        where: { cardId: card.id, isDeferred: true }
+      });
+      
+      let pendingCapital = 0;
+      let pendingInterest = 0;
+      
+      deferredTxs.forEach((tx: any) => {
+        if (tx.amortizationSchedule) {
+          try {
+            const schedule = typeof tx.amortizationSchedule === 'string' ? JSON.parse(tx.amortizationSchedule) : tx.amortizationSchedule;
+            schedule.forEach((inst: any) => {
+               if (inst.status === 'pending') {
+                 pendingCapital += Number(inst.principal);
+                 pendingInterest += Number(inst.interest);
+               }
+            });
+          } catch(e) {}
+        }
+      });
+
+      const thisMonthSpent = await prisma.transaction.aggregate({
+        where: { cardId: card.id, type: 'expense', transactionDate: { gte: currentMonthStart } },
+        _sum: { amount: true }
+      });
+
+      return {
+        ...card,
+        pendingCapital,
+        pendingInterest,
+        currentMonthSpent: Number(thisMonthSpent._sum?.amount || 0)
+      };
+    }));
 
     // === CREDIT CARD UTILIZATION (for finScore) ===
     let totalCreditLimit = 0;
@@ -257,8 +294,48 @@ export const getDashboardSummary = async (req: any, res: Response) => {
     if (highestExcessCat && highestExcessAmount > 0) {
       optimizationInsight = `Has gastado $${Math.round(highestExcessAmount).toLocaleString('es-CO')} más en ${highestExcessCat} que el mes pasado promedio. Si reduces esto, podrías alcanzar tus metas de ahorro más rápido.`;
     }
+
+    // === DEBT ADVICE ===
+    let debtAdvice = "No tienes deudas activas. ¡Excelente trabajo construyendo tu patrimonio!";
+    if (totalCreditUsed > 0 && creditCards.length > 0) {
+       const highestCard = creditCards.reduce((prev: any, current: any) => {
+          const prevUtil = prev.creditLimit > 0 ? prev.currentBalance / prev.creditLimit : 0;
+          const currUtil = current.creditLimit > 0 ? current.currentBalance / current.creditLimit : 0;
+          return (prevUtil > currUtil) ? prev : current;
+       }, creditCards[0]);
+
+       if (creditUtilizationRate > 50) {
+         debtAdvice = `Tienes un uso alto de crédito (${Math.round(creditUtilizationRate)}%). Intenta aportar capital extraordinario a tu ${highestCard.bankName || 'tarjeta'} para reducir intereses y mejorar tu Score.`;
+       } else if (effortRate > 30) {
+         debtAdvice = `Tus cuotas de deuda absorben una parte importante de tus ingresos. Si tienes ahorros, considera saldar total o parcialmente tu ${highestCard.bankName || 'tarjeta'}.`;
+       } else {
+         debtAdvice = `Tu uso de crédito es responsable (${Math.round(creditUtilizationRate)}%). Recuerda hacer las próximas compras a 1 cuota en tu ${highestCard.bankName || 'tarjeta'}.`;
+       }
+    }
+
+    // === USD/COP EXCHANGE RATE ===
+    let usdHistory: any[] = [];
+    let currentUsdPrice = 4000;
+    try {
+      const trmResponse = await fetch('https://www.datos.gov.co/resource/32sa-8pi3.json?$limit=10&$order=vigenciadesde%20DESC');
+      if (trmResponse.ok) {
+        const data = await trmResponse.json();
+        usdHistory = data.map((d: any) => ({
+          date: d.vigenciadesde.split('T')[0],
+          valor: Number(d.valor)
+        })).reverse();
+        if (data.length > 0) {
+          currentUsdPrice = Number(data[0].valor);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch TRM', e);
+    }
     
     res.json({
+      debtAdvice,
+      currentUsdPrice,
+      usdHistory,
       totalBalance,
       currentMonthIncome,
       currentMonthExpense,

@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../../utils/api';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, LineChart, Line
 } from 'recharts';
-import { TrendingUp, TrendingDown, Wallet, AlertCircle, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, CreditCard as CardIcon, ShieldCheck, Filter } from 'lucide-react';
 
 const PIE_COLORS = [
   '#f43f5e', // rose
@@ -94,6 +94,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 const Dashboard = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [currency, setCurrency] = useState<'COP' | 'USD'>('COP');
   
   const { data, isLoading, error } = useQuery({
     queryKey: ['dashboardSummary'],
@@ -112,80 +113,88 @@ const Dashboard = () => {
     return <div className="text-red-500 text-sm p-4">Error al cargar los datos del panel</div>;
   }
 
-  // Credit Card Alerts Logic
-  const getCardAlerts = () => {
-    if (!data?.creditCards) return [];
-    const today = new Date();
-    const currentDay = today.getDate();
-    const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-
-    return data.creditCards.map((card: any) => {
-      let daysUntilDue = card.paymentDueDay - currentDay;
-      if (daysUntilDue < 0) {
-        // Due date has passed for this month, calculate for next month
-        daysUntilDue = (daysInMonth - currentDay) + card.paymentDueDay;
-      }
-
-      let status = 'normal';
-      let message = `Vence en ${daysUntilDue} días`;
-
-      if (daysUntilDue === 0) {
-        status = 'danger';
-        message = '¡Vence hoy!';
-      } else if (daysUntilDue <= 3) {
-        status = 'warning';
-        message = `Vence muy pronto (${daysUntilDue} días)`;
-      } else if (daysUntilDue <= 7) {
-        status = 'info';
-        message = `Vence la próxima semana (${daysUntilDue} días)`;
-      }
-
-      return { ...card, daysUntilDue, status, message };
-    }).filter((c: any) => c.status !== 'normal').sort((a: any, b: any) => a.daysUntilDue - b.daysUntilDue);
+  const formatVal = (v: number | string | undefined | null) => {
+    const num = Number(v || 0);
+    if (currency === 'USD' && data?.currentUsdPrice > 0) {
+      const usdVal = num / data.currentUsdPrice;
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(usdVal);
+    }
+    return `$${formatCOPFull(num)}`;
   };
-
-  const cardAlerts = getCardAlerts();
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-slate-800">Resumen financiero</h2>
-        <p className="text-xs text-slate-400 font-medium">
-          {new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
-        </p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+           <h2 className="text-2xl font-bold text-slate-800">Resumen financiero</h2>
+           <p className="text-xs text-slate-400 font-medium">
+             {new Date().toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
+           </p>
+        </div>
+        
+        {/* USD Widget & Switch */}
+        <div className="flex items-center gap-4">
+           {data?.currentUsdPrice > 0 && (
+             <div className="flex items-center bg-white border border-slate-200 rounded-xl p-2 shadow-sm">
+                <div className="mr-3">
+                   <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">TRM HOY</p>
+                   <p className="text-sm font-black text-slate-700 leading-tight">${formatCOPFull(data.currentUsdPrice)}</p>
+                </div>
+                {data?.usdHistory && data.usdHistory.length > 0 && (
+                  <div className="w-16 h-8">
+                     <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={data.usdHistory}>
+                           <Line type="monotone" dataKey="valor" stroke="#10b981" strokeWidth={2} dot={false} isAnimationActive={false} />
+                        </LineChart>
+                     </ResponsiveContainer>
+                  </div>
+                )}
+             </div>
+           )}
+           <div className="bg-slate-200/60 p-1 rounded-xl flex">
+              <button 
+                onClick={() => setCurrency('COP')} 
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${currency === 'COP' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+              >COP</button>
+              <button 
+                onClick={() => setCurrency('USD')} 
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${currency === 'USD' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+              >USD</button>
+           </div>
+        </div>
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <KpiCard
           title="Balance Total"
-          value={`$${formatCOPFull(data?.totalBalance ?? 0)}`}
-          sub="COP"
+          value={formatVal(data?.totalBalance)}
+          sub={currency}
           icon={Wallet}
           gradient="bg-gradient-to-br from-indigo-600 to-indigo-800"
         />
         <KpiCard
           title="Ingresos del mes"
-          value={`$${formatCOPFull(data?.currentMonthIncome ?? 0)}`}
+          value={formatVal(data?.currentMonthIncome)}
           icon={TrendingUp}
           gradient="bg-gradient-to-br from-emerald-500 to-teal-700"
         />
         <KpiCard
           title="Gastos del mes"
-          value={`$${formatCOPFull(data?.currentMonthExpense ?? 0)}`}
+          value={formatVal(data?.currentMonthExpense)}
           icon={TrendingDown}
           gradient="bg-gradient-to-br from-rose-500 to-red-700"
         />
         <KpiCard
           title="Ahorro Total"
-          value={`$${formatCOPFull(data?.savingsTotal ?? 0)}`}
+          value={formatVal(data?.savingsTotal)}
           sub="Balance Global"
           icon={ShieldCheck}
           gradient="bg-gradient-to-br from-violet-500 to-purple-800"
         />
         <KpiCard
           title="Consumo Crédito Mes"
-          value={`$${formatCOPFull(data?.currentMonthCreditUsage ?? 0)}`}
+          value={formatVal(data?.currentMonthCreditUsage)}
           sub="Diferidos en tarjeta"
           icon={CardIcon}
           gradient="bg-gradient-to-br from-orange-500 to-red-600"
@@ -201,7 +210,7 @@ const Dashboard = () => {
         ) : (
           <KpiCard
             title="Fondo Emergencia"
-            value={`$${formatCOPFull(data?.emergencyFundTotal ?? 0)}`}
+            value={formatVal(data?.emergencyFundTotal)}
             sub="Sin meta configurada"
             icon={ShieldCheck}
             gradient="bg-gradient-to-br from-slate-700 to-slate-900"
@@ -435,57 +444,88 @@ const Dashboard = () => {
           )}
         </div>
 
-        {/* Credit Card Alerts */}
-        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6">
-          <h3 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
-            <CardIcon size={18} className="text-slate-500" />
-            Vencimientos Próximos
-          </h3>
-          {cardAlerts.length > 0 ? (
-            <div className="space-y-3">
-              {cardAlerts.map((alert: any) => (
-                <div 
-                  key={alert.id} 
-                  className={`p-4 rounded-xl flex items-start gap-3 border ${
-                    alert.status === 'danger' ? 'bg-red-50 border-red-100 text-red-900' :
-                    alert.status === 'warning' ? 'bg-amber-50 border-amber-100 text-amber-900' :
-                    'bg-blue-50 border-blue-100 text-blue-900'
-                  }`}
-                >
-                  <AlertCircle size={20} className={`shrink-0 mt-0.5 ${
-                    alert.status === 'danger' ? 'text-red-500' :
-                    alert.status === 'warning' ? 'text-amber-500' :
-                    'text-blue-500'
-                  }`} />
-                  <div>
-                    <h4 className="font-bold text-sm flex items-center gap-2">
-                       {(alert.cardName || alert.bankName).replace(new RegExp(alert.cardNetwork || '', 'ig'), '').trim()}
-                       {alert.cardNetwork === 'visa' && <span className="text-[10px] font-black italic tracking-widest text-[#1434CB] bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-200">VISA</span>}
-                       {alert.cardNetwork === 'mastercard' && (
-                         <span className="flex items-center -space-x-1.5 bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-200">
-                           <span className="w-2.5 h-2.5 rounded-full bg-[#EB001B] mix-blend-multiply"></span>
-                           <span className="w-2.5 h-2.5 rounded-full bg-[#F79E1B] mix-blend-multiply"></span>
-                         </span>
-                       )}
-                       {alert.cardNetwork === 'amex' && <span className="text-[9px] leading-none font-bold bg-[#002663] text-white px-1.5 py-1 rounded shadow-sm border border-[#002663] tracking-wider">AMEX</span>}
-                    </h4>
-                    <p className={`text-xs mt-0.5 font-medium ${
-                      alert.status === 'danger' ? 'text-red-700' :
-                      alert.status === 'warning' ? 'text-amber-700' :
-                      'text-blue-700'
-                    }`}>
-                      {alert.message}
-                    </p>
-                    <p className="text-sm font-bold mt-1 tracking-tight">Deuda: ${formatCOPFull(Number(alert.currentBalance || 0))}</p>
-                  </div>
-                </div>
-              ))}
+        {/* Tus Tarjetas de Crédito */}
+        <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200/60 p-6 flex flex-col h-full">
+          <div className="flex justify-between items-end mb-4">
+             <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+               <CardIcon size={18} className="text-slate-500" />
+               Tus Tarjetas
+             </h3>
+             <span className="text-xs font-semibold text-slate-500">
+               Deuda Total: {formatVal(data?.creditCards?.reduce((a:any, c:any) => a + Number(c.currentBalance), 0))}
+             </span>
+          </div>
+
+          {data?.creditCards?.length > 0 ? (
+            <div className="space-y-4 flex-1">
+              {data.creditCards.map((card: any) => {
+                 let b1 = 'from-slate-700 to-slate-900', t1 = 'text-white';
+                 let netLogo = '';
+                 if (card.cardNetwork === 'visa') { b1 = 'from-blue-700 to-blue-900'; netLogo = 'VISA'; }
+                 if (card.cardNetwork === 'mastercard') { b1 = 'from-orange-500 to-red-600'; netLogo = 'mc'; }
+                 if (card.cardNetwork === 'amex') { b1 = 'from-sky-700 to-indigo-900'; netLogo = 'AMEX'; }
+                 
+                 const cap = Number(card.pendingCapital || 0);
+                 const int = Number(card.pendingInterest || 0);
+                 
+                 return (
+                   <div key={card.id} className={`p-5 rounded-2xl shadow-md bg-gradient-to-br ${b1} ${t1} relative overflow-hidden group`}>
+                     <div className="absolute -right-6 -top-6 w-24 h-24 rounded-full bg-white/10 blur-xl group-hover:bg-white/20 transition-all"></div>
+                     <div className="absolute -left-6 -bottom-6 w-20 h-20 rounded-full bg-black/10 blur-xl"></div>
+                     
+                     <div className="relative z-10 flex justify-between items-start mb-6">
+                        <div>
+                           <p className="text-[10px] font-bold uppercase tracking-widest text-white/70 mb-0.5">{card.bankName}</p>
+                           <p className="font-semibold text-sm">{card.cardName} •••• {card.lastFourDigits}</p>
+                        </div>
+                        {netLogo === 'mc' ? (
+                          <div className="flex items-center -space-x-2">
+                            <div className="w-5 h-5 rounded-full bg-red-500/80 mix-blend-multiply"></div>
+                            <div className="w-5 h-5 rounded-full bg-amber-400/80 mix-blend-multiply"></div>
+                          </div>
+                        ) : (
+                          <span className="text-xs font-black tracking-widest italic opacity-80">{netLogo}</span>
+                        )}
+                     </div>
+                     
+                     <div className="relative z-10 space-y-1 mb-4">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Deuda Actual</p>
+                        <p className="text-xl font-black">{formatVal(card.currentBalance)}</p>
+                     </div>
+                     
+                     <div className="relative z-10 grid grid-cols-2 gap-2 text-xs bg-black/20 p-3 rounded-xl border border-white/10 backdrop-blur-sm">
+                        <div>
+                           <p className="text-white/60 font-medium text-[10px] uppercase">Capital Pend.</p>
+                           <p className="font-bold">{formatVal(cap)}</p>
+                        </div>
+                        <div>
+                           <p className="text-white/60 font-medium text-[10px] uppercase">Int. Pend.</p>
+                           <p className="font-bold text-rose-300">{formatVal(int)}</p>
+                        </div>
+                        <div className="col-span-2 mt-1 pt-2 border-t border-white/10 flex justify-between text-[10px]">
+                            <span className="text-white/70">Gastado este mes</span>
+                            <span className="font-bold">{formatVal(card.currentMonthSpent)}</span>
+                        </div>
+                     </div>
+                   </div>
+                 );
+              })}
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-60 py-8">
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 opacity-60 py-8">
                <CardIcon size={40} className="mb-3" />
-               <p className="text-sm font-medium">No hay fechas de pago cercanas</p>
+               <p className="text-sm font-medium">No tienes tarjetas registradas</p>
             </div>
+          )}
+          
+          {data?.debtAdvice && (
+             <div className="mt-4 p-4 rounded-xl bg-indigo-50 border border-indigo-100/50 flex items-start gap-3">
+                <ShieldCheck size={20} className="text-indigo-500 shrink-0 mt-0.5" />
+                <div>
+                   <h4 className="text-xs font-bold text-indigo-900 mb-0.5">Consejo Inteligente</h4>
+                   <p className="text-[11px] font-medium text-indigo-700/80 leading-relaxed">{data.debtAdvice}</p>
+                </div>
+             </div>
           )}
         </div>
       </div>
